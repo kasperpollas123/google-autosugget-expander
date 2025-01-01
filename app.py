@@ -62,8 +62,9 @@ if query:
         initial_keywords = get_autosuggest(query)
         if initial_keywords:
             all_keywords.update(initial_keywords)
-        progress_bar.progress(1 / total_variations)
-        status_text.text(f"Progress: {1}/{total_variations} variations completed")
+        progress_value = 1 / total_variations
+        progress_bar.progress(min(progress_value, 1.0))  # Ensure progress <= 1
+        status_text.text(f"Progress: 1/{total_variations} variations completed")
 
     # Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
@@ -74,7 +75,8 @@ if query:
             keywords = get_autosuggest(expanded_query)
             if keywords:  # Only add if keywords are fetched successfully
                 all_keywords.update(keywords)
-            progress_bar.progress(i / total_variations)
+            progress_value = i / total_variations
+            progress_bar.progress(min(progress_value, 1.0))  # Ensure progress <= 1
             status_text.text(f"Progress: {i}/{total_variations} variations completed")
         time.sleep(1)  # Add a 1-second delay between requests
 
