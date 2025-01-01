@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import string
+import time  # For adding delays
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -55,9 +56,11 @@ if query:
     # Fetch autosuggest keywords for each expanded variation
     all_keywords = set(initial_keywords)  # Use a set to avoid duplicates
     for expanded_query in expanded_keywords:
+        st.write(f"Fetching autosuggest keywords for: {expanded_query}")
         keywords = get_autosuggest(expanded_query)
         if keywords:  # Only add if keywords are fetched successfully
             all_keywords.update(keywords)
+        time.sleep(1)  # Add a 1-second delay between requests
     
     # Display the final list of keywords
     if all_keywords:
