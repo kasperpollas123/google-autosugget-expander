@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import string
-import time  # For adding delays
+import time
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -12,8 +12,8 @@ PROXY_PORT = "7777"
 # Proxy URL (HTTPS)
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
-# Function to fetch Google autosuggest keywords
-def get_autosuggest(query):
+# Function to fetch Google autosuggest keywords with retries
+def get_autosuggest(query, max_retries=3):
     url = "https://www.google.com/complete/search"
     params = {
         "q": query,
@@ -23,14 +23,19 @@ def get_autosuggest(query):
         "http": PROXY_URL,
         "https": PROXY_URL,
     }
-    try:
-        # Fetch autosuggest keywords
-        response = requests.get(url, params=params, proxies=proxies)
-        response.raise_for_status()
-        return response.json()[1]
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
-        return []
+    for attempt in range(max_retries):
+        try:
+            # Fetch autosuggest keywords
+            response = requests.get(url, params=params, proxies=proxies)
+            response.raise_for_status()
+            return response.json()[1]
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:  # Don't log the error on the last attempt
+                st.warning(f"Retrying ({attempt + 1}/{max_retries}) for '{query}'...")
+            else:
+                st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
+            time.sleep(1)  # Wait 1 second before retrying
+    return []  # Return an empty list if all retries fail
 
 # Function to generate expanded keyword variations
 def generate_expanded_keywords(seed_keyword):
