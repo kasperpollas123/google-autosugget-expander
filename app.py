@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import string
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -23,6 +22,7 @@ def get_autosuggest(query):
         "https": PROXY_URL,
     }
     try:
+        # Fetch autosuggest keywords
         response = requests.get(url, params=params, proxies=proxies)
         response.raise_for_status()
         return response.json()[1]
@@ -30,37 +30,15 @@ def get_autosuggest(query):
         st.error(f"Error fetching autosuggest keywords: {e}")
         return []
 
-# Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword):
-    expanded_keywords = []
-    for letter in string.ascii_lowercase:
-        # Append letter to the end of the seed keyword
-        expanded_keywords.append(f"{seed_keyword} {letter}")
-        # Append letter to the beginning of the seed keyword
-        expanded_keywords.append(f"{letter} {seed_keyword}")
-    return expanded_keywords
-
 # Streamlit UI
 st.title("Google Autosuggest Keyword Fetcher")
 query = st.text_input("Enter a seed keyword:")
 if query:
-    # Fetch initial autosuggest keywords
     st.write(f"Fetching autosuggest keywords for: {query}")
-    initial_keywords = get_autosuggest(query)
-    
-    # Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query)
-    
-    # Fetch autosuggest keywords for each expanded variation
-    all_keywords = set(initial_keywords)  # Use a set to avoid duplicates
-    for expanded_query in expanded_keywords:
-        keywords = get_autosuggest(expanded_query)
-        all_keywords.update(keywords)
-    
-    # Display the final list of keywords
-    if all_keywords:
+    keywords = get_autosuggest(query)
+    if keywords:
         st.write("Autosuggest Keywords:")
-        for keyword in sorted(all_keywords):  # Sort keywords alphabetically
+        for keyword in keywords:
             st.write(keyword)
     else:
         st.write("No keywords found.")
