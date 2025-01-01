@@ -1,8 +1,8 @@
 import streamlit as st
 import requests
 
-# Oxylabs HTTPS proxy endpoint
-PROXY_USER = "customer-kasperpollas_EImZC-cc-us-sessid-0575625614-sesstime-10"
+# Oxylabs continuous rotation proxy endpoint
+PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
 PROXY_PASS = "L6mFKak8Uz286dC+"
 PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
