@@ -22,11 +22,18 @@ def get_autosuggest(query):
         "https": PROXY_URL,
     }
     try:
+        # Test the proxy by fetching the IP address
+        ip_check_url = "https://ip.oxylabs.io/location"
+        ip_response = requests.get(ip_check_url, proxies=proxies)
+        ip_response.raise_for_status()
+        st.write(f"Proxy IP Address: {ip_response.text}")
+
+        # Fetch autosuggest keywords
         response = requests.get(url, params=params, proxies=proxies)
         response.raise_for_status()
         return response.json()[1]
     except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching autosuggest: {e}")
+        st.error(f"Error: {e}")
         return []
 
 # Streamlit UI
