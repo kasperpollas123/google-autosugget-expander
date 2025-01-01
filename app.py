@@ -1,8 +1,8 @@
 import streamlit as st
 import requests
 
-# Oxylabs session-based proxy endpoint
-PROXY_USER = "customer-kasperpollas_EImZC-sessid-0575625614-sesstime-10"
+# Oxylabs session-based proxy endpoint with country code (US)
+PROXY_USER = "customer-kasperpollas_EImZC-cc-us-sessid-0575625614-sesstime-10"
 PROXY_PASS = "L6mFKak8Uz286dC+"
 PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
