@@ -1,13 +1,13 @@
 import streamlit as st
 import requests
 
-# Oxylabs session-based proxy endpoint with country code (US)
+# Oxylabs HTTPS proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us-sessid-0575625614-sesstime-10"
 PROXY_PASS = "L6mFKak8Uz286dC+"
 PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 
-# Proxy URL
+# Proxy URL (HTTPS)
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 # Function to fetch Google autosuggest keywords
