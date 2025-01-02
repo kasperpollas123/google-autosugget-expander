@@ -3,6 +3,10 @@ import string
 import asyncio
 import aiohttp
 import pandas as pd
+import uvloop
+
+# Set uvloop as the event loop policy
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -43,19 +47,13 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch all keywords asynchronously
 async def fetch_all_keywords(queries):
     all_keywords = set()
-    connector = aiohttp.TCPConnector(limit=100)  # Increased concurrency limit to 100
+    connector = aiohttp.TCPConnector(limit=150)  # Increased concurrency limit to 150
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [fetch_autosuggest(session, query) for query in queries]
-        batch_size = 10  # Update progress after every 10 requests
-        for i in range(0, len(tasks), batch_size):
-            batch = tasks[i:i + batch_size]
-            results = await asyncio.gather(*batch)
-            for keywords in results:
-                if keywords:
-                    all_keywords.update(keywords)
-            progress_value = min((i + batch_size) / len(tasks), 1.0)
-            progress_bar.progress(progress_value)
-            status_text.text(f"Progress: {int(progress_value * 100)}% completed")
+        results = await asyncio.gather(*tasks)
+        for keywords in results:
+            if keywords:
+                all_keywords.update(keywords)
     return all_keywords
 
 # Streamlit UI
@@ -64,9 +62,6 @@ query = st.text_input("Enter a seed keyword:")
 if query:
     # Initialize variables
     all_keywords = set()
-    total_variations = 52  # 26 letters * 2 (beginning and end)
-    progress_bar = st.progress(0)
-    status_text = st.empty()
 
     # Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
@@ -76,9 +71,6 @@ if query:
         initial_keywords = asyncio.run(fetch_initial())
         if initial_keywords:
             all_keywords.update(initial_keywords)
-        progress_value = 1 / total_variations
-        progress_bar.progress(min(progress_value, 1.0))  # Ensure progress <= 1
-        status_text.text(f"Progress: 1/{total_variations} variations completed")
 
     # Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
