@@ -115,8 +115,13 @@ if query:
             data=csv,
             file_name="autosuggest_keywords.csv",
             mime="text/csv",
+            key="download_button"  # Unique key for the download button
         )
     else:
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = set()  # Reset keywords if no query is entered
+
+# Prevent rerun on download button click
+if "download_button" in st.session_state:
+    st.session_state.download_button = False
