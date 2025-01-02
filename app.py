@@ -6,8 +6,8 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Oxylabs continuous rotation proxy endpoint
-PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
-PROXY_PASS = "L6mFKak8Uz286dC+"
+PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
+PROXY_PASS = "Snaksnak12345+"
 PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 
