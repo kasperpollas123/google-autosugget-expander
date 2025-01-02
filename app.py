@@ -43,16 +43,19 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch all keywords asynchronously
 async def fetch_all_keywords(queries):
     all_keywords = set()
-    connector = aiohttp.TCPConnector(limit=50)  # Increased concurrency limit
+    connector = aiohttp.TCPConnector(limit=100)  # Increased concurrency limit to 100
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [fetch_autosuggest(session, query) for query in queries]
-        for i, task in enumerate(asyncio.as_completed(tasks), start=1):
-            keywords = await task
-            if keywords:
-                all_keywords.update(keywords)
-            progress_value = i / len(queries)
-            progress_bar.progress(min(progress_value, 1.0))
-            status_text.text(f"Progress: {i}/{len(queries)} variations completed")
+        batch_size = 10  # Update progress after every 10 requests
+        for i in range(0, len(tasks), batch_size):
+            batch = tasks[i:i + batch_size]
+            results = await asyncio.gather(*batch)
+            for keywords in results:
+                if keywords:
+                    all_keywords.update(keywords)
+            progress_value = min((i + batch_size) / len(tasks), 1.0)
+            progress_bar.progress(progress_value)
+            status_text.text(f"Progress: {int(progress_value * 100)}% completed")
     return all_keywords
 
 # Streamlit UI
