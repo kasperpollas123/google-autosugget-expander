@@ -67,10 +67,15 @@ def fetch_keywords_concurrently(queries):
 
 # Streamlit UI
 st.title("Google Autosuggest Keyword Fetcher")
+
+# Initialize session state to store keywords
+if "all_keywords" not in st.session_state:
+    st.session_state.all_keywords = set()
+
 query = st.text_input("Enter a seed keyword:")
+
 if query:
     # Initialize variables
-    all_keywords = set()
     total_variations = 52  # 26 letters * 2 (beginning and end)
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -79,7 +84,7 @@ if query:
     with st.spinner("Fetching initial autosuggest keywords..."):
         initial_keywords = get_autosuggest(query)
         if initial_keywords:
-            all_keywords.update(initial_keywords)
+            st.session_state.all_keywords.update(initial_keywords)
         progress_value = 1 / total_variations
         progress_bar.progress(min(progress_value, 1.0))  # Ensure progress <= 1
         status_text.text(f"Progress: 1/{total_variations} variations completed")
@@ -89,15 +94,15 @@ if query:
 
     # Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
-        all_keywords.update(fetch_keywords_concurrently(expanded_keywords))
+        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords))
 
     # Display the final list of keywords
-    if all_keywords:
+    if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
-        st.write(f"Total keywords fetched: {len(all_keywords)}")
+        st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
         # Convert keywords to a DataFrame
-        keywords_df = pd.DataFrame(sorted(all_keywords), columns=["Keyword"])
+        keywords_df = pd.DataFrame(sorted(st.session_state.all_keywords), columns=["Keyword"])
 
         # Display the DataFrame
         st.write("Autosuggest Keywords:")
@@ -113,3 +118,5 @@ if query:
         )
     else:
         st.write("No keywords found.")
+else:
+    st.session_state.all_keywords = set()  # Reset keywords if no query is entered
