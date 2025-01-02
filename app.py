@@ -24,8 +24,13 @@ async def fetch_autosuggest(session, query):
     try:
         async with session.get(url, params=params, proxy=PROXY_URL, proxy_auth=proxy_auth) as response:
             response.raise_for_status()
-            data = await response.json()
-            return data[1]  # Return the list of suggestions
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "application/json" in content_type or "text/javascript" in content_type:
+                data = await response.json(content_type=None)  # Allow any content type
+                return data[1]  # Return the list of suggestions
+            else:
+                st.error(f"Unexpected response format for '{query}': {content_type}")
+                return []
     except Exception as e:
         st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
         return []
@@ -45,14 +50,15 @@ async def fetch_all_keywords(queries):
     all_keywords = set()
     connector = aiohttp.TCPConnector(limit=50)  # Increased concurrency limit
     async with aiohttp.ClientSession(connector=connector) as session:
-        tasks = [fetch_autosuggest(session, query) for query in queries]
-        for i, task in enumerate(asyncio.as_completed(tasks), start=1):
-            keywords = await task
+        for i, query in enumerate(queries):
+            keywords = await fetch_autosuggest(session, query)
             if keywords:
                 all_keywords.update(keywords)
-            progress_value = i / len(queries)
+            if i % 10 == 0:  # Add a delay after every 10 requests
+                await asyncio.sleep(1)  # 1-second delay
+            progress_value = (i + 1) / len(queries)
             progress_bar.progress(min(progress_value, 1.0))
-            status_text.text(f"Progress: {i}/{len(queries)} variations completed")
+            status_text.text(f"Progress: {i + 1}/{len(queries)} variations completed")
     return all_keywords
 
 # Streamlit UI
