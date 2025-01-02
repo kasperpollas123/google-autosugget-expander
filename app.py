@@ -3,6 +3,7 @@ import string
 import asyncio
 import aiohttp
 import pandas as pd
+from aiohttp import ProxyConnector
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -11,7 +12,7 @@ PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 
 # Proxy URL (HTTPS)
-PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+PROXY_URL = f"http://{PROXY_HOST}:{PROXY_PORT}"
 
 # Function to fetch Google autosuggest keywords asynchronously
 async def fetch_autosuggest(session, query):
@@ -20,9 +21,8 @@ async def fetch_autosuggest(session, query):
         "q": query,
         "client": "chrome",
     }
-    proxy_auth = aiohttp.BasicAuth(PROXY_USER, PROXY_PASS)
     try:
-        async with session.get(url, params=params, proxy=PROXY_URL, proxy_auth=proxy_auth) as response:
+        async with session.get(url, params=params) as response:
             response.raise_for_status()
             content_type = response.headers.get("Content-Type", "").lower()
             if "application/json" in content_type or "text/javascript" in content_type:
@@ -48,7 +48,12 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch all keywords asynchronously
 async def fetch_all_keywords(queries):
     all_keywords = set()
-    connector = aiohttp.TCPConnector(limit=50)  # Increased concurrency limit
+    proxy_auth = aiohttp.BasicAuth(PROXY_USER, PROXY_PASS)
+    connector = ProxyConnector(
+        proxy=PROXY_URL,
+        proxy_auth=proxy_auth,
+        limit=50  # Increased concurrency limit
+    )
     async with aiohttp.ClientSession(connector=connector) as session:
         for i, query in enumerate(queries):
             keywords = await fetch_autosuggest(session, query)
