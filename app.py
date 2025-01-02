@@ -3,10 +3,13 @@ import string
 import asyncio
 import aiohttp
 import pandas as pd
-import uvloop
+import platform
+from aiohttp import ProxyConnector
 
-# Set uvloop as the event loop policy
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+# Use uvloop for Unix-based systems (Linux, macOS)
+if platform.system() != "Windows":
+    import uvloop
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -15,7 +18,7 @@ PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 
 # Proxy URL (HTTPS)
-PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+PROXY_URL = f"http://{PROXY_HOST}:{PROXY_PORT}"
 
 # Function to fetch Google autosuggest keywords asynchronously
 async def fetch_autosuggest(session, query):
@@ -24,12 +27,16 @@ async def fetch_autosuggest(session, query):
         "q": query,
         "client": "chrome",
     }
-    proxy_auth = aiohttp.BasicAuth(PROXY_USER, PROXY_PASS)
     try:
-        async with session.get(url, params=params, proxy=PROXY_URL, proxy_auth=proxy_auth) as response:
+        async with session.get(url, params=params) as response:
             response.raise_for_status()
-            data = await response.json()
-            return data[1]  # Return the list of suggestions
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "application/json" in content_type or "text/javascript" in content_type:
+                data = await response.json()
+                return data[1]  # Return the list of suggestions
+            else:
+                st.error(f"Unexpected response format for '{query}': {content_type}")
+                return []
     except Exception as e:
         st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
         return []
@@ -47,13 +54,19 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch all keywords asynchronously
 async def fetch_all_keywords(queries):
     all_keywords = set()
-    connector = aiohttp.TCPConnector(limit=150)  # Increased concurrency limit to 150
+    proxy_auth = aiohttp.BasicAuth(PROXY_USER, PROXY_PASS)
+    connector = ProxyConnector(
+        proxy=PROXY_URL,
+        proxy_auth=proxy_auth,
+        limit=150  # Increased concurrency limit to 150
+    )
     async with aiohttp.ClientSession(connector=connector) as session:
-        tasks = [fetch_autosuggest(session, query) for query in queries]
-        results = await asyncio.gather(*tasks)
-        for keywords in results:
+        for i, query in enumerate(queries):
+            keywords = await fetch_autosuggest(session, query)
             if keywords:
                 all_keywords.update(keywords)
+            if i % 10 == 0:  # Add a delay after every 10 requests
+                await asyncio.sleep(1)  # 1-second delay
     return all_keywords
 
 # Streamlit UI
