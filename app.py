@@ -43,7 +43,7 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch all keywords asynchronously
 async def fetch_all_keywords(queries):
     all_keywords = set()
-    connector = aiohttp.TCPConnector(limit=30)  # Limit concurrent connections
+    connector = aiohttp.TCPConnector(limit=50)  # Increased concurrency limit
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [fetch_autosuggest(session, query) for query in queries]
         for i, task in enumerate(asyncio.as_completed(tasks), start=1):
