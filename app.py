@@ -110,6 +110,23 @@ def fetch_google_serp(query, limit=5, retries=3):
             return f"An error occurred for '{query}': {e}"
     return f"Error: Max retries reached for '{query}'."
 
+# Function to fetch SERP results concurrently
+def fetch_serp_results_concurrently(keywords):
+    serp_results = {}
+    with ThreadPoolExecutor(max_workers=20) as executor:  # Adjust max_workers as needed
+        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
+        for i, future in enumerate(as_completed(futures), start=1):
+            keyword = futures[future]
+            try:
+                result = future.result()
+                serp_results[keyword] = result
+                progress_value = i / len(keywords)
+                serp_progress_bar.progress(min(progress_value, 1.0))
+                serp_status_text.text(f"SERP Progress: {i}/{len(keywords)} keywords completed")
+            except Exception as e:
+                st.error(f"Error fetching SERP results for '{keyword}': {e}")
+    return serp_results
+
 # Streamlit UI
 st.title("Google Autosuggest Keyword Fetcher with SERP Results")
 
@@ -143,16 +160,17 @@ if query:
     with st.spinner("Fetching autosuggest keywords concurrently..."):
         st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords))
 
-    # Fetch SERP results for each keyword
+    # Fetch SERP results for each keyword concurrently
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        with st.spinner("Fetching SERP results for each keyword..."):
-            for keyword in st.session_state.all_keywords:
-                if keyword not in st.session_state.serp_results:
-                    serp_results = fetch_google_serp(keyword)
-                    st.session_state.serp_results[keyword] = serp_results
+        # Initialize SERP progress bar and status text
+        serp_progress_bar = st.progress(0)
+        serp_status_text = st.empty()
+
+        with st.spinner("Fetching SERP results for each keyword concurrently..."):
+            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords)
 
         # Display SERP results for each keyword
         st.subheader("SERP Results for Each Keyword")
