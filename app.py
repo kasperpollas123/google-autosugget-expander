@@ -51,7 +51,7 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries):
     all_keywords = set()
-    with ThreadPoolExecutor(max_workers=20) as executor:  # Increased max_workers to 20
+    with ThreadPoolExecutor(max_workers=50) as executor:  # Increased max_workers to 50
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
