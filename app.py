@@ -3,13 +3,6 @@ import string
 import asyncio
 import aiohttp
 import pandas as pd
-import platform
-from aiohttp import ProxyConnector
-
-# Use uvloop for Unix-based systems (Linux, macOS)
-if platform.system() != "Windows":
-    import uvloop
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -18,7 +11,7 @@ PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 
 # Proxy URL (HTTPS)
-PROXY_URL = f"http://{PROXY_HOST}:{PROXY_PORT}"
+PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 # Function to fetch Google autosuggest keywords asynchronously
 async def fetch_autosuggest(session, query):
@@ -27,16 +20,12 @@ async def fetch_autosuggest(session, query):
         "q": query,
         "client": "chrome",
     }
+    proxy_auth = aiohttp.BasicAuth(PROXY_USER, PROXY_PASS)
     try:
-        async with session.get(url, params=params) as response:
+        async with session.get(url, params=params, proxy=PROXY_URL, proxy_auth=proxy_auth) as response:
             response.raise_for_status()
-            content_type = response.headers.get("Content-Type", "").lower()
-            if "application/json" in content_type or "text/javascript" in content_type:
-                data = await response.json()
-                return data[1]  # Return the list of suggestions
-            else:
-                st.error(f"Unexpected response format for '{query}': {content_type}")
-                return []
+            data = await response.json()
+            return data[1]  # Return the list of suggestions
     except Exception as e:
         st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
         return []
@@ -54,19 +43,19 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch all keywords asynchronously
 async def fetch_all_keywords(queries):
     all_keywords = set()
-    proxy_auth = aiohttp.BasicAuth(PROXY_USER, PROXY_PASS)
-    connector = ProxyConnector(
-        proxy=PROXY_URL,
-        proxy_auth=proxy_auth,
-        limit=150  # Increased concurrency limit to 150
-    )
+    connector = aiohttp.TCPConnector(limit=100)  # Increased concurrency limit to 100
     async with aiohttp.ClientSession(connector=connector) as session:
-        for i, query in enumerate(queries):
-            keywords = await fetch_autosuggest(session, query)
-            if keywords:
-                all_keywords.update(keywords)
-            if i % 10 == 0:  # Add a delay after every 10 requests
-                await asyncio.sleep(1)  # 1-second delay
+        tasks = [fetch_autosuggest(session, query) for query in queries]
+        batch_size = 10  # Update progress after every 10 requests
+        for i in range(0, len(tasks), batch_size):
+            batch = tasks[i:i + batch_size]
+            results = await asyncio.gather(*batch)
+            for keywords in results:
+                if keywords:
+                    all_keywords.update(keywords)
+            progress_value = min((i + batch_size) / len(tasks), 1.0)
+            progress_bar.progress(progress_value)
+            status_text.text(f"Progress: {int(progress_value * 100)}% completed")
     return all_keywords
 
 # Streamlit UI
@@ -75,6 +64,9 @@ query = st.text_input("Enter a seed keyword:")
 if query:
     # Initialize variables
     all_keywords = set()
+    total_variations = 52  # 26 letters * 2 (beginning and end)
+    progress_bar = st.progress(0)
+    status_text = st.empty()
 
     # Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
@@ -84,6 +76,9 @@ if query:
         initial_keywords = asyncio.run(fetch_initial())
         if initial_keywords:
             all_keywords.update(initial_keywords)
+        progress_value = 1 / total_variations
+        progress_bar.progress(min(progress_value, 1.0))  # Ensure progress <= 1
+        status_text.text(f"Progress: 1/{total_variations} variations completed")
 
     # Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
