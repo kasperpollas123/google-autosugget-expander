@@ -104,24 +104,21 @@ if query:
         # Convert keywords to a DataFrame
         keywords_df = pd.DataFrame(sorted(st.session_state.all_keywords), columns=["Keyword"])
 
-        # Display the DataFrame
-        st.write("Autosuggest Keywords:")
-        st.dataframe(keywords_df)
-
-        # Export to CSV
-        csv = keywords_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Download CSV",
-            data=csv,
-            file_name="autosuggest_keywords.csv",
-            mime="text/csv",
-            key="download_button"  # Unique key for the download button
+        # Display the DataFrame with custom styling
+        st.markdown(
+            """
+            <style>
+            .stDataFrame {
+                width: 100% !important;
+                margin: 0 auto !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
         )
+        st.write("Autosuggest Keywords:")
+        st.dataframe(keywords_df, use_container_width=True)  # Make the table wider
     else:
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = set()  # Reset keywords if no query is entered
-
-# Prevent rerun on download button click
-if "download_button" in st.session_state:
-    st.session_state.download_button = False
