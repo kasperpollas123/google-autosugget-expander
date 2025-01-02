@@ -3,6 +3,7 @@ import requests
 import string
 import time
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Oxylabs continuous rotation proxy endpoint
 PROXY_USER = "customer-kasperpollas_EImZC-cc-us"
@@ -47,6 +48,23 @@ def generate_expanded_keywords(seed_keyword):
         expanded_keywords.append(f"{letter} {seed_keyword}")
     return expanded_keywords
 
+# Function to fetch keywords concurrently using multi-threading
+def fetch_keywords_concurrently(queries):
+    all_keywords = set()
+    with ThreadPoolExecutor(max_workers=10) as executor:  # Adjust max_workers as needed
+        futures = {executor.submit(get_autosuggest, query): query for query in queries}
+        for i, future in enumerate(as_completed(futures), start=1):
+            try:
+                keywords = future.result()
+                if keywords:
+                    all_keywords.update(keywords)
+                progress_value = i / len(queries)
+                progress_bar.progress(min(progress_value, 1.0))
+                status_text.text(f"Progress: {i}/{len(queries)} variations completed")
+            except Exception as e:
+                st.error(f"Error fetching keywords: {e}")
+    return all_keywords
+
 # Streamlit UI
 st.title("Google Autosuggest Keyword Fetcher")
 query = st.text_input("Enter a seed keyword:")
@@ -69,16 +87,9 @@ if query:
     # Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
 
-    # Fetch autosuggest keywords for each expanded variation
-    for i, expanded_query in enumerate(expanded_keywords, start=2):
-        with st.spinner(f"Fetching autosuggest keywords for: {expanded_query}..."):
-            keywords = get_autosuggest(expanded_query)
-            if keywords:  # Only add if keywords are fetched successfully
-                all_keywords.update(keywords)
-            progress_value = i / total_variations
-            progress_bar.progress(min(progress_value, 1.0))  # Ensure progress <= 1
-            status_text.text(f"Progress: {i}/{total_variations} variations completed")
-        time.sleep(1)  # Add a 1-second delay between requests
+    # Fetch autosuggest keywords concurrently
+    with st.spinner("Fetching autosuggest keywords concurrently..."):
+        all_keywords.update(fetch_keywords_concurrently(expanded_keywords))
 
     # Display the final list of keywords
     if all_keywords:
