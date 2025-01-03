@@ -173,7 +173,7 @@ def fetch_google_serp(query, limit=3, retries=3):
     return f"Error: Max retries reached for '{query}'."
 
 # Function to fetch keywords concurrently using multi-threading
-def fetch_keywords_concurrently(queries, progress_bar, status_text):
+def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
     all_keywords = set()
     with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
@@ -185,9 +185,11 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text):
                 progress_value = i / len(queries)
                 progress_bar.progress(min(progress_value, 1.0))
                 status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
+                if len(all_keywords) >= max_keywords:
+                    break  # Stop fetching once the maximum limit is reached
             except Exception as e:
                 st.error(f"Error fetching keywords: {e}")
-    return all_keywords
+    return list(all_keywords)[:max_keywords]
 
 # Function to fetch SERP results concurrently
 def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
@@ -302,7 +304,7 @@ if query:
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
-        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text))
+        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text, max_keywords=500))
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
