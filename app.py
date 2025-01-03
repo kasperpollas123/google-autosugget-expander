@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from bs4 import BeautifulSoup
+import re  # Using regex for lightweight HTML parsing
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
@@ -137,18 +137,11 @@ def fetch_google_serp(query, limit=3, retries=3):
             session.cookies.clear()
             response = session.get(url, proxies=proxies)
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'lxml')
-                results = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
-                    if "ads" in result.get("class", []):
-                        continue
-                    link_element = result.find('a', href=True)
-                    if link_element:
-                        link = link_element['href']
-                        if link.startswith('/url?q='):
-                            link = link[7:].split('&')[0]  # Extract the actual URL
-                        results.append(link)
-                return results
+                # Use regex to extract links from the raw HTML
+                links = re.findall(r'\/url\?q=(https?:\/\/[^\&]+)', response.text)
+                # Deduplicate and clean links
+                unique_links = list(set(links))[:limit]  # Limit to first 3 unique links
+                return unique_links
             elif response.status_code == 429:
                 if attempt < retries - 1:
                     time.sleep(10)
