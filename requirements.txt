@@ -5,3 +5,4 @@ lxml
 pandas
 google-generativeai
 aiohttp
+nltk
