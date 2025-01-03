@@ -111,13 +111,13 @@ def generate_expanded_keywords(seed_keyword):
         if level1_keywords:
             all_keywords.update(level1_keywords)
 
-        # Fetch Level 2 autosuggest keywords (one level of recursion)
-        for keyword in level1_keywords:
-            level2_keywords = get_autosuggest(keyword)
-            if level2_keywords:
-                # Comment out the relevance filter
-                # filtered_level2_keywords = [kw for kw in level2_keywords if is_relevant(kw, seed_keyword)]
-                all_keywords.update(level2_keywords)  # Use unfiltered Level 2 keywords
+        # Comment out Level 2 fetching
+        # for keyword in level1_keywords:
+        #     level2_keywords = get_autosuggest(keyword)
+        #     if level2_keywords:
+        #         # Comment out the relevance filter
+        #         # filtered_level2_keywords = [kw for kw in level2_keywords if is_relevant(kw, seed_keyword)]
+        #         all_keywords.update(level2_keywords)  # Use unfiltered Level 2 keywords
 
         # Universal modifiers (smaller set for better relevance)
         universal_modifiers = [
