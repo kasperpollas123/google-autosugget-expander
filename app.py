@@ -58,7 +58,7 @@ def get_synonyms(word):
     return list(synonyms)
 
 # Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword, user_modifiers=None):
+def generate_expanded_keywords(seed_keyword):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
 
@@ -90,10 +90,6 @@ def generate_expanded_keywords(seed_keyword, user_modifiers=None):
         # Location-based
         "near me", "local"
     ]
-
-    # Add user-provided modifiers (if any)
-    if user_modifiers:
-        universal_modifiers.extend(user_modifiers)
 
     # Apply universal modifiers to the seed keyword, autosuggest keywords, and synonyms
     for modifier in universal_modifiers:
@@ -292,22 +288,17 @@ if "gemini_output" not in st.session_state:
 with st.sidebar:
     st.header("Settings")
     query = st.text_input("Enter a seed keyword:")
-    user_modifiers = st.text_area("Enter additional modifiers (comma-separated):")
     st.markdown("---")
     st.markdown("**Instructions:**")
     st.markdown("1. Enter a seed keyword (e.g., 'plumbing').")
-    st.markdown("2. Optionally, enter additional modifiers (e.g., 'emergency, residential').")
-    st.markdown("3. The app will fetch autosuggest keywords and SERP results.")
-    st.markdown("4. Keywords will be analyzed and grouped by intent using Gemini.")
+    st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
+    st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
 # Main content
 if query:
     # Initialize progress bar and status text
     progress_bar = st.progress(0)
     status_text = st.empty()
-
-    # Parse user-provided modifiers
-    user_modifiers_list = [modifier.strip() for modifier in user_modifiers.split(",")] if user_modifiers else []
 
     # Step 1: Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
@@ -318,7 +309,7 @@ if query:
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query, user_modifiers_list)
+    expanded_keywords = generate_expanded_keywords(query)
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
