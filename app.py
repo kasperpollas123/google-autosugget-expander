@@ -205,7 +205,17 @@ if query:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         results = loop.run_until_complete(fetch_keywords_concurrently(expanded_keywords))
-        st.session_state.all_keywords.update([kw for kw in results if isinstance(kw, list)])
+
+        # Filter out exceptions and ensure only valid lists are processed
+        valid_keywords = []
+        for result in results:
+            if isinstance(result, list):  # Only process valid results
+                valid_keywords.extend(result)
+            elif isinstance(result, Exception):  # Log errors
+                logger.error(f"Error in fetching keywords: {result}")
+
+        # Update session state with valid keywords
+        st.session_state.all_keywords.update(valid_keywords)
 
     # Fetch SERP results concurrently
     if st.session_state.all_keywords:
