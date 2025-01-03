@@ -233,8 +233,17 @@ if "serp_results" not in st.session_state:
 if "gemini_output" not in st.session_state:
     st.session_state.gemini_output = None
 
-query = st.text_input("Enter a seed keyword:")
+# Sidebar for user input and settings
+with st.sidebar:
+    st.header("Settings")
+    query = st.text_input("Enter a seed keyword:")
+    st.markdown("---")
+    st.markdown("**Instructions:**")
+    st.markdown("1. Enter a seed keyword (e.g., 'plumbing').")
+    st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
+    st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
+# Main content
 if query:
     # Initialize variables
     total_variations = 52  # 26 letters * 2 (beginning and end)
