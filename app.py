@@ -8,6 +8,7 @@ import nltk
 from nltk.corpus import wordnet
 from difflib import SequenceMatcher
 import os
+import string
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
@@ -101,6 +102,11 @@ def generate_expanded_keywords(seed_keyword):
         for keyword in filtered_keywords:
             all_keywords.add(f"{modifier} {keyword}")
             all_keywords.add(f"{keyword} {modifier}")
+
+    # Append each letter of the alphabet to the seed keyword
+    for letter in string.ascii_lowercase:
+        all_keywords.add(f"{seed_keyword} {letter}")
+        all_keywords.add(f"{letter} {seed_keyword}")
 
     # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
     filtered_keywords = set()
