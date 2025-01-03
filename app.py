@@ -8,13 +8,34 @@ from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
+import random
 
-# Oxylabs proxy endpoint
-PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
-PROXY_PASS = "Snaksnak12345+"
-PROXY_HOST = "pr.oxylabs.io"
-PROXY_PORT = "7777"
-PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+# List of Oxylabs proxy endpoints
+PROXY_ENDPOINTS = [
+    {
+        "user": "kasperpollas_EImZC-cc-us",  # Already has -cc-us
+        "password": "L6mFKak8Uz286dC+",
+        "host": "pr.oxylabs.io",
+        "port": "7777",
+    },
+    {
+        "user": "kasperpollas12345_Lyt6m-cc-us",  # Already has -cc-us
+        "password": "Snaksnak12345+",
+        "host": "pr.oxylabs.io",
+        "port": "7777",
+    },
+    {
+        "user": "kasperpollasletsgo123-cc-us",  # Added -cc-us
+        "password": "Akkkk11jrk34j+",
+        "host": "pr.oxylabs.io",
+        "port": "7777",
+    },
+]
+
+# Function to get a random proxy endpoint
+def get_random_proxy():
+    proxy = random.choice(PROXY_ENDPOINTS)
+    return f"http://{proxy['user']}:{proxy['password']}@{proxy['host']}:{proxy['port']}"
 
 # Google Gemini API key
 GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
@@ -30,12 +51,13 @@ def get_autosuggest(query, max_retries=3):
         "q": query,
         "client": "chrome",
     }
-    proxies = {
-        "http": PROXY_URL,
-        "https": PROXY_URL,
-    }
     for attempt in range(max_retries):
         try:
+            # Use a random proxy for each request
+            proxies = {
+                "http": get_random_proxy(),
+                "https": get_random_proxy(),
+            }
             response = requests.get(url, params=params, proxies=proxies)
             response.raise_for_status()
             return response.json()[1]
@@ -57,7 +79,7 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries):
     all_keywords = set()
-    with ThreadPoolExecutor(max_workers=100) as executor:
+    with ThreadPoolExecutor(max_workers=200) as executor:  # Increased max_workers
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
@@ -76,9 +98,10 @@ def fetch_google_serp(query, limit=5, retries=3):
     url = f"https://www.google.com/search?q={query}"
     for attempt in range(retries):
         try:
+            # Use a random proxy for each request
             proxies = {
-                "http": PROXY_URL,
-                "https": PROXY_URL,
+                "http": get_random_proxy(),
+                "https": get_random_proxy(),
             }
             session = requests.Session()
             session.cookies.clear()
@@ -122,7 +145,7 @@ def fetch_google_serp(query, limit=5, retries=3):
 # Function to fetch SERP results concurrently
 def fetch_serp_results_concurrently(keywords):
     serp_results = {}
-    with ThreadPoolExecutor(max_workers=20) as executor:  # Adjust max_workers as needed
+    with ThreadPoolExecutor(max_workers=50) as executor:  # Increased max_workers
         futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
