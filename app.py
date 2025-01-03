@@ -286,11 +286,20 @@ if query:
         # Display Gemini output as collapsible cards
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
-            for theme in st.session_state.gemini_output.split("\n\n"):
-                if theme.strip():
-                    theme_name = theme.split("\n")[0]
+            
+            # Split the Gemini output into individual themes
+            themes = st.session_state.gemini_output.strip().split("\n\n")
+            
+            for theme in themes:
+                if theme.strip():  # Ensure the theme is not empty
+                    # Split the theme into its name and keywords
+                    theme_lines = theme.strip().split("\n")
+                    theme_name = theme_lines[0]  # The first line is the theme name
+                    theme_keywords = "\n".join(theme_lines[1:])  # The rest are keywords
+                    
+                    # Display the theme as a collapsible card
                     with st.expander(theme_name):
-                        st.markdown("\n".join(theme.split("\n")[1:]))
+                        st.markdown(theme_keywords)
     else:
         st.write("No keywords found.")
 else:
