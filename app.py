@@ -217,6 +217,7 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
     3. Consolidate similar keywords into a single representative keyword.
     4. Limit each group to a maximum of 10 keywords.
     5. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
+    6. Ensure all keywords are grouped into relevant themes. Do not create an "Other" group.
 
     The final output should look EXACTLY like this:
 
