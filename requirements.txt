@@ -9,3 +9,4 @@ nltk
 selenium==4.15.2
 webdriver-manager==4.0.1
 lxml
+selectolax
