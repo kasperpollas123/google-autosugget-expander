@@ -124,8 +124,8 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch and parse Google SERP (limit to 3 results, uses proxy)
-def fetch_google_serp(query, limit=3, retries=3):
+# Updated Function to fetch and parse Google SERP (only first result, uses proxy)
+def fetch_google_serp(query, retries=3):
     url = f"https://www.google.com/search?q={query}"
     proxies = {
         "http": PROXY_URL,
@@ -139,21 +139,25 @@ def fetch_google_serp(query, limit=3, retries=3):
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
+                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe'):
                     if "ads" in result.get("class", []):
                         continue
                     title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
-                    title = title_element.get_text().strip() if title_element else "No Title Found"
+                    title = title_element.get_text().strip() if title_element else None
                     description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
                                          result.find('div', class_='v9i61e') or \
                                          result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
                                          result.find('div', class_='BNeawe s3v9rd AP7Wnd')
-                    description = description_element.get_text().strip() if description_element else "No Description Found"
-                    results.append({
-                        "title": title,
-                        "description": description
-                    })
-                return results
+                    description = description_element.get_text().strip() if description_element else None
+
+                    # Only return the first valid result with both title and description
+                    if title and description:
+                        return [{
+                            "title": title,
+                            "description": description
+                        }]
+                # If no valid result is found, return an error message
+                return f"No valid SERP result found for '{query}'."
             elif response.status_code == 429:
                 if attempt < retries - 1:
                     time.sleep(10)
