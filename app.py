@@ -83,9 +83,6 @@ def generate_expanded_keywords(seed_keyword):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
 
-    # Filter autosuggest keywords to include only those containing the seed keyword
-    filtered_keywords = [kw for kw in level1_keywords if seed_keyword.lower() in kw.lower()]
-
     # Fetch synonyms for the seed keyword
     synonyms = get_synonyms(seed_keyword)
     relevant_synonyms = [syn for syn in synonyms if seed_keyword.lower() in syn.lower() or syn.lower() in seed_keyword.lower()]
@@ -93,26 +90,21 @@ def generate_expanded_keywords(seed_keyword):
     # Combine all keywords
     all_keywords = set()
     all_keywords.add(seed_keyword)
-    all_keywords.update(filtered_keywords)
+    all_keywords.update(level1_keywords)
     all_keywords.update(relevant_synonyms)
 
     # Append alphabet letters to each keyword
     all_keywords = append_alphabet(all_keywords)
 
-    # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
-    filtered_keywords = set()
-    for keyword in all_keywords:
-        if seed_keyword.lower() in keyword.lower():
-            filtered_keywords.add(keyword)
-        else:
-            for synonym in relevant_synonyms:
-                if synonym.lower() in keyword.lower():
-                    filtered_keywords.add(keyword)
-                    break
+    # Fetch autosuggest keywords for the expanded list
+    expanded_keywords = fetch_keywords_concurrently(all_keywords, st.progress(0), st.empty())
+
+    # Combine all keywords
+    all_keywords.update(expanded_keywords)
 
     # Remove duplicate keywords
     unique_keywords = []
-    for kw in filtered_keywords:
+    for kw in all_keywords:
         if not any(is_similar(kw, existing_kw) for existing_kw in unique_keywords):
             unique_keywords.append(kw)
 
@@ -198,7 +190,7 @@ with st.sidebar:
     query = st.text_input("Enter a seed keyword:")
     st.markdown("---")
     st.markdown("**Instructions:**")
-    st.markdown("1. Enter a seed keyword (e.g., 'AI').")
+    st.markdown("1. Enter a seed keyword (e.g., 'guitar').")
     st.markdown("2. The app will fetch autosuggest keywords.")
     st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
@@ -219,13 +211,7 @@ if query:
     # Step 2: Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
 
-    # Step 3: Fetch autosuggest keywords concurrently
-    with st.spinner("Fetching autosuggest keywords concurrently..."):
-        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text))
-        progress_bar.progress(0.8)
-        status_text.text("Fetching expanded autosuggest keywords...")
-
-    # Step 4: Analyze keywords with Gemini
+    # Step 3: Analyze keywords with Gemini
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
