@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
-from google.api_core import retry, timeout
+from google.api_core import retry, timeout as api_timeout
 
 # Oxylabs proxy endpoint
 PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
@@ -208,7 +208,7 @@ def analyze_keywords_with_gemini(keywords, serp_results):
     }
 
     # Increase timeout for API requests
-    custom_timeout = timeout.Timeout(300)  # 300 seconds (5 minutes) timeout
+    custom_timeout = api_timeout.Timeout(300)  # 300 seconds (5 minutes) timeout
 
     # Retry logic for API calls
     @retry.Retry()
