@@ -149,8 +149,12 @@ def fetch_bing_serp(query, limit=3, retries=3):
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
                 
-                # Find all organic search result containers using a structure-focused approach
+                # Primary selector: Target organic results with specific structure
                 organic_results = soup.select('li:has(h2 > a):has(div.b_caption), li:has(h2 > a):has(div.snippet)')[:limit]
+                
+                # Fallback selector: If no results, use broader selector
+                if not organic_results:
+                    organic_results = soup.select('li.b_algo')[:limit]
                 
                 for result in organic_results:
                     # Extract title (h2 > a)
