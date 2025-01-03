@@ -10,12 +10,11 @@ import nltk
 from nltk.corpus import wordnet
 from difflib import SequenceMatcher
 import os
-import random
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
 
-# Oxylabs proxy endpoint (only for autosuggest)
+# Oxylabs proxy endpoint
 PROXY_USER = os.getenv("PROXY_USER", "customer-kasperpollas12345_Lyt6m-cc-us")
 PROXY_PASS = os.getenv("PROXY_PASS", "Snaksnak12345+")
 PROXY_HOST = os.getenv("PROXY_HOST", "pr.oxylabs.io")
@@ -125,15 +124,18 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch and parse Google SERP (limit to 3 results, no proxy)
+# Function to fetch and parse Google SERP (limit to 3 results, uses proxy)
 def fetch_google_serp(query, limit=3, retries=3):
     url = f"https://www.google.com/search?q={query}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    proxies = {
+        "http": PROXY_URL,
+        "https": PROXY_URL,
     }
     for attempt in range(retries):
         try:
-            response = requests.get(url, headers=headers)
+            session = requests.Session()
+            session.cookies.clear()
+            response = session.get(url, proxies=proxies)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
@@ -160,6 +162,12 @@ def fetch_google_serp(query, limit=3, retries=3):
                     return f"Error: Rate limit exceeded for '{query}'."
             else:
                 return f"Error: Unable to fetch SERP for '{query}'. Status code: {response.status_code}"
+        except ProxyError as e:
+            if attempt < retries - 1:
+                time.sleep(5)
+                continue
+            else:
+                return f"Proxy error occurred for '{query}': {e}"
         except Exception as e:
             return f"An error occurred for '{query}': {e}"
     return f"Error: Max retries reached for '{query}'."
@@ -167,7 +175,7 @@ def fetch_google_serp(query, limit=3, retries=3):
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
     all_keywords = set()
-    with ThreadPoolExecutor(max_workers=10) as executor:  # Reduced max_workers
+    with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
@@ -183,19 +191,21 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords
                 st.error(f"Error fetching keywords: {e}")
     return list(all_keywords)[:max_keywords]
 
-# Function to fetch SERP results sequentially (no proxy)
-def fetch_serp_results_sequentially(keywords, progress_bar, status_text):
+# Function to fetch SERP results concurrently (uses proxy)
+def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
     serp_results = {}
-    for i, keyword in enumerate(keywords, start=1):
-        try:
-            result = fetch_google_serp(keyword)
-            serp_results[keyword] = result
-            progress_value = i / len(keywords)
-            progress_bar.progress(min(progress_value, 1.0))
-            status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
-            time.sleep(random.uniform(2, 5))  # Random delay between requests
-        except Exception as e:
-            st.error(f"Error fetching SERP results for '{keyword}': {e}")
+    with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
+        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
+        for i, future in enumerate(as_completed(futures), start=1):
+            keyword = futures[future]
+            try:
+                result = future.result()
+                serp_results[keyword] = result
+                progress_value = i / len(keywords)
+                progress_bar.progress(min(progress_value, 1.0))
+                status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
+            except Exception as e:
+                st.error(f"Error fetching SERP results for '{keyword}': {e}")
     return serp_results
 
 # Function to format SERP data for logging
@@ -312,15 +322,22 @@ if query:
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP results sequentially (no proxy)
+    # Step 4: Fetch SERP results for each keyword concurrently (uses proxy)
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        with st.spinner("Fetching SERP results sequentially..."):
-            st.session_state.serp_results = fetch_serp_results_sequentially(st.session_state.all_keywords, progress_bar, status_text)
+        # Debugging: Log the number of keywords being processed
+        st.write(f"Debug: Fetching SERP results for {len(st.session_state.all_keywords)} keywords...")
+
+        with st.spinner("Fetching SERP results for each keyword concurrently..."):
+            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
             progress_bar.progress(0.8)
             status_text.text("Fetching SERP results...")
+
+        # Debugging: Log the contents of serp_results
+        st.write("Debug: SERP Results Dictionary")
+        st.write(st.session_state.serp_results)
 
         # Log SERP data in a collapsible box (for inspection only)
         with st.expander("View Scraped SERP Data (Sample)"):
