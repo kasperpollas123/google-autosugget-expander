@@ -10,6 +10,9 @@ import nltk
 from nltk.corpus import wordnet
 from difflib import SequenceMatcher
 import os
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+import random
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
@@ -124,48 +127,49 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch and parse Google SERP (limit to 3 results, no proxy)
+# Function to fetch and parse Google SERP using Selenium (limit to 3 results)
 def fetch_google_serp(query, limit=3, retries=3):
-    url = f"https://www.google.com/search?q={query}"
+    options = Options()
+    options.add_argument("--headless")  # Run in headless mode
+    options.add_argument("--disable-blink-features=AutomationControlled")  # Avoid detection
+    driver = webdriver.Chrome(options=options)
+    
     for attempt in range(retries):
         try:
-            session = requests.Session()
-            session.cookies.clear()
-            response = session.get(url)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'lxml')
-                results = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
-                    if "ads" in result.get("class", []):
-                        continue
-                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
-                    title = title_element.get_text().strip() if title_element else "No Title Found"
-                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
-                                         result.find('div', class_='v9i61e') or \
-                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
-                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
-                    description = description_element.get_text().strip() if description_element else "No Description Found"
-                    results.append({
-                        "title": title,
-                        "description": description
-                    })
-                return results
-            elif response.status_code == 429:
-                if attempt < retries - 1:
-                    time.sleep(10)
+            driver.get(f"https://www.google.com/search?q={query}")
+            time.sleep(random.uniform(2, 5))  # Random delay to mimic human behavior
+            soup = BeautifulSoup(driver.page_source, 'lxml')
+            results = []
+            for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
+                if "ads" in result.get("class", []):
                     continue
-                else:
-                    return f"Error: Rate limit exceeded for '{query}'."
-            else:
-                return f"Error: Unable to fetch SERP for '{query}'. Status code: {response.status_code}"
+                title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
+                title = title_element.get_text().strip() if title_element else "No Title Found"
+                description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
+                                     result.find('div', class_='v9i61e') or \
+                                     result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
+                                     result.find('div', class_='BNeawe s3v9rd AP7Wnd')
+                description = description_element.get_text().strip() if description_element else "No Description Found"
+                results.append({
+                    "title": title,
+                    "description": description
+                })
+            driver.quit()
+            return results
         except Exception as e:
-            return f"An error occurred for '{query}': {e}"
+            if attempt < retries - 1:
+                time.sleep(10)
+                continue
+            else:
+                driver.quit()
+                return f"An error occurred for '{query}': {e}"
+    driver.quit()
     return f"Error: Max retries reached for '{query}'."
 
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
     all_keywords = set()
-    with ThreadPoolExecutor(max_workers=500) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:  # Reduced max_workers
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
@@ -181,10 +185,10 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords
                 st.error(f"Error fetching keywords: {e}")
     return list(all_keywords)[:max_keywords]
 
-# Function to fetch SERP results concurrently (no proxy)
+# Function to fetch SERP results concurrently (uses Selenium)
 def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
     serp_results = {}
-    with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
+    with ThreadPoolExecutor(max_workers=10) as executor:  # Reduced max_workers
         futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
@@ -194,6 +198,7 @@ def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
                 progress_value = i / len(keywords)
                 progress_bar.progress(min(progress_value, 1.0))
                 status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
+                time.sleep(random.uniform(2, 5))  # Random delay between requests
             except Exception as e:
                 st.error(f"Error fetching SERP results for '{keyword}': {e}")
     return serp_results
@@ -312,7 +317,7 @@ if query:
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP results for each keyword concurrently (no proxy)
+    # Step 4: Fetch SERP results for each keyword concurrently (uses Selenium)
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
