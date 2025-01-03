@@ -57,12 +57,6 @@ def get_synonyms(word):
             synonyms.add(lemma.name())
     return list(synonyms)
 
-# Function to calculate relevance score
-def calculate_relevance(keyword, seed_keyword):
-    seed_words = seed_keyword.lower().split()
-    keyword_words = keyword.lower().split()
-    return len(set(seed_words).intersection(keyword_words)) / len(seed_words)
-
 # Function to check if two keywords are too similar
 def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
@@ -90,6 +84,9 @@ def generate_expanded_keywords(seed_keyword):
         "near me", "local"
     ]
 
+    # Alphabet modifiers (A-Z)
+    alphabet_modifiers = [chr(i) for i in range(ord('a'), ord('z') + 1)]
+
     # Apply universal modifiers to the seed keyword and filtered keywords
     for modifier in universal_modifiers:
         all_keywords.add(f"{modifier} {seed_keyword}")
@@ -97,6 +94,11 @@ def generate_expanded_keywords(seed_keyword):
         for keyword in level1_keywords:
             all_keywords.add(f"{modifier} {keyword}")
             all_keywords.add(f"{keyword} {modifier}")
+
+    # Apply alphabet modifiers to the seed keyword
+    for letter in alphabet_modifiers:
+        all_keywords.add(f"{seed_keyword} {letter}")
+        all_keywords.add(f"{letter} {seed_keyword}")
 
     # Remove duplicate keywords
     unique_keywords = []
