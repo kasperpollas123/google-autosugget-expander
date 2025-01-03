@@ -2,8 +2,6 @@ import streamlit as st
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import re  # Using regex for lightweight HTML parsing
-from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
 import nltk
@@ -124,42 +122,6 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch and parse Google SERP (limit to 3 results, uses proxy)
-def fetch_google_serp(query, limit=3, retries=3):
-    url = f"https://www.google.com/search?q={query}"
-    proxies = {
-        "http": PROXY_URL,
-        "https": PROXY_URL,
-    }
-    for attempt in range(retries):
-        try:
-            session = requests.Session()
-            session.cookies.clear()
-            response = session.get(url, proxies=proxies)
-            if response.status_code == 200:
-                # Use regex to extract links from the raw HTML
-                links = re.findall(r'\/url\?q=(https?:\/\/[^\&]+)', response.text)
-                # Deduplicate and clean links
-                unique_links = list(set(links))[:limit]  # Limit to first 3 unique links
-                return unique_links
-            elif response.status_code == 429:
-                if attempt < retries - 1:
-                    time.sleep(10)
-                    continue
-                else:
-                    return f"Error: Rate limit exceeded for '{query}'."
-            else:
-                return f"Error: Unable to fetch SERP for '{query}'. Status code: {response.status_code}"
-        except ProxyError as e:
-            if attempt < retries - 1:
-                time.sleep(5)
-                continue
-            else:
-                return f"Proxy error occurred for '{query}': {e}"
-        except Exception as e:
-            return f"An error occurred for '{query}': {e}"
-    return f"Error: Max retries reached for '{query}'."
-
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
     all_keywords = set()
@@ -179,43 +141,14 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords
                 st.error(f"Error fetching keywords: {e}")
     return list(all_keywords)[:max_keywords]
 
-# Function to fetch SERP results concurrently (uses proxy)
-def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
-    serp_results = {}
-    with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
-        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
-        for i, future in enumerate(as_completed(futures), start=1):
-            keyword = futures[future]
-            try:
-                result = future.result()
-                serp_results[keyword] = result
-                progress_value = i / len(keywords)
-                progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
-            except Exception as e:
-                st.error(f"Error fetching SERP results for '{keyword}': {e}")
-    return serp_results
-
-# Function to format SERP data for logging
-def format_serp_data_for_logging(serp_results):
-    log_output = ""
-    for keyword, results in serp_results.items():
-        if isinstance(results, list):  # Only process valid SERP results
-            log_output += f"Keyword: {keyword}\n"
-            for i, result in enumerate(results, start=1):
-                if isinstance(result, str):  # Ensure result is a valid link
-                    log_output += f"  Result {i}: {result}\n"
-            log_output += "\n"
-    return log_output
-
-# Function to analyze keywords with Gemini
-def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
+# Function to analyze keywords with Gemini (only keywords, no SERP data)
+def analyze_keywords_with_gemini(keywords, seed_keyword):
     # System instructions and chat input
     prompt = f"""
-    Please analyze the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. 
+    Please analyze the intent for all of the keywords on this list. Then come up with different themes that keywords can be grouped under. 
 
     **Rules:**
-    1. Only include keywords that are closely related to the seed keyword: '{seed_keyword}' (artificial intelligence).
+    1. Only include keywords that are closely related to the seed keyword: '{seed_keyword}'.
     2. Remove keywords that are too generic, irrelevant, or unclear in intent.
     3. Consolidate similar keywords into a single representative keyword.
     4. Limit each group to a maximum of 10 keywords.
@@ -231,14 +164,8 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
     """
 
     # Prepare the chat input for Gemini
-    chat_input = "Here is the list of keywords and their SERP results:\n"
-    for keyword, results in serp_results.items():
-        if isinstance(results, list):  # Only process valid SERP results
-            chat_input += f"Keyword: {keyword}\n"
-            for i, result in enumerate(results, start=1):
-                if isinstance(result, str):  # Ensure result is a valid link
-                    chat_input += f"  Result {i}: {result}\n"
-            chat_input += "\n"
+    chat_input = "Here is the list of keywords:\n"
+    chat_input += "\n".join(keywords)
 
     # Configure Gemini generation settings
     generation_config = {
@@ -263,13 +190,11 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
         return None
 
 # Streamlit UI
-st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
+st.title("Google Autosuggest Keyword Fetcher with Gemini Analysis")
 
-# Initialize session state to store keywords and SERP results
+# Initialize session state to store keywords
 if "all_keywords" not in st.session_state:
     st.session_state.all_keywords = set()
-if "serp_results" not in st.session_state:
-    st.session_state.serp_results = {}
 if "gemini_output" not in st.session_state:
     st.session_state.gemini_output = None
 
@@ -280,7 +205,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Instructions:**")
     st.markdown("1. Enter a seed keyword (e.g., 'AI').")
-    st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
+    st.markdown("2. The app will fetch autosuggest keywords.")
     st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
 # Main content
@@ -306,34 +231,15 @@ if query:
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP results for each keyword concurrently (uses proxy)
+    # Step 4: Analyze keywords with Gemini
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        # Debugging: Log the number of keywords being processed
-        st.write(f"Debug: Fetching SERP results for {len(st.session_state.all_keywords)} keywords...")
-
-        with st.spinner("Fetching SERP results for each keyword concurrently..."):
-            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
-            progress_bar.progress(0.8)
-            status_text.text("Fetching SERP results...")
-
-        # Debugging: Log the contents of serp_results
-        st.write("Debug: SERP Results Dictionary")
-        st.write(st.session_state.serp_results)
-
-        # Log SERP data in a collapsible box (for inspection only)
-        with st.expander("View Scraped SERP Data (Sample)"):
-            serp_log = format_serp_data_for_logging(st.session_state.serp_results)
-            st.text_area("SERP Data Log", value=serp_log, height=300, key="serp_log")
-
-        # Step 5: Analyze keywords with Gemini
-        if st.session_state.serp_results:
-            with st.spinner("Analyzing keywords with Gemini..."):
-                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results, query)
-                progress_bar.progress(1.0)
-                status_text.text("Analysis complete!")
+        with st.spinner("Analyzing keywords with Gemini..."):
+            st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, query)
+            progress_bar.progress(1.0)
+            status_text.text("Analysis complete!")
 
         # Display Gemini output as collapsible cards
         if st.session_state.gemini_output:
@@ -356,5 +262,4 @@ if query:
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = set()
-    st.session_state.serp_results = {}
     st.session_state.gemini_output = None
