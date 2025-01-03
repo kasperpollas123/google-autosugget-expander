@@ -207,13 +207,13 @@ def analyze_keywords_with_gemini(keywords, serp_results):
         "max_output_tokens": 10000,  # Increase output token limit to 10,000
     }
 
-    # Retry logic for API calls with longer timeout
+    # Retry logic for API calls with increased timeout
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
             contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
             generation_config=generation_config,
-            request_options={"timeout": 300},  # 5-minute timeout
+            request_options={"timeout": 600},  # 10-minute timeout
         )
 
     try:
