@@ -32,12 +32,10 @@ PROXY_ENDPOINTS = [
     },
 ]
 
-# Function to get a random proxy endpoint
-def get_random_proxy():
-    proxy = random.choice(PROXY_ENDPOINTS)
-    proxy_url = f"http://{proxy['user']}:{proxy['password']}@{proxy['host']}:{proxy['port']}"
-    print(f"Using proxy: {proxy_url}")  # Log the proxy being used
-    return proxy_url
+# Function to get a proxy for a specific worker
+def get_proxy_for_worker(worker_id):
+    proxy = PROXY_ENDPOINTS[worker_id % len(PROXY_ENDPOINTS)]
+    return f"http://{proxy['user']}:{proxy['password']}@{proxy['host']}:{proxy['port']}"
 
 # Google Gemini API key
 GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
@@ -47,7 +45,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Function to fetch Google autosuggest keywords with retries
-def get_autosuggest(query, max_retries=3):
+def get_autosuggest(query, worker_id, max_retries=3):
     url = "https://www.google.com/complete/search"
     params = {
         "q": query,
@@ -55,10 +53,10 @@ def get_autosuggest(query, max_retries=3):
     }
     for attempt in range(max_retries):
         try:
-            # Use a random proxy for each request
+            # Use a specific proxy for this worker
             proxies = {
-                "http": get_random_proxy(),
-                "https": get_random_proxy(),
+                "http": get_proxy_for_worker(worker_id),
+                "https": get_proxy_for_worker(worker_id),
             }
             response = requests.get(url, params=params, proxies=proxies, timeout=30)
             response.raise_for_status()
@@ -82,8 +80,8 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries):
     all_keywords = set()
-    with ThreadPoolExecutor(max_workers=100) as executor:
-        futures = {executor.submit(get_autosuggest, query): query for query in queries}
+    with ThreadPoolExecutor(max_workers=150) as executor:  # Increased max_workers
+        futures = {executor.submit(get_autosuggest, query, i): query for i, query in enumerate(queries)}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
                 keywords = future.result()
@@ -97,14 +95,14 @@ def fetch_keywords_concurrently(queries):
     return all_keywords
 
 # Function to fetch and parse Google SERP
-def fetch_google_serp(query, limit=5, retries=3):
+def fetch_google_serp(query, worker_id, limit=5, retries=3):
     url = f"https://www.google.com/search?q={query}"
     for attempt in range(retries):
         try:
-            # Use a random proxy for each request
+            # Use a specific proxy for this worker
             proxies = {
-                "http": get_random_proxy(),
-                "https": get_random_proxy(),
+                "http": get_proxy_for_worker(worker_id),
+                "https": get_proxy_for_worker(worker_id),
             }
             session = requests.Session()
             session.cookies.clear()
@@ -148,8 +146,8 @@ def fetch_google_serp(query, limit=5, retries=3):
 # Function to fetch SERP results concurrently
 def fetch_serp_results_concurrently(keywords):
     serp_results = {}
-    with ThreadPoolExecutor(max_workers=20) as executor:  # Adjust max_workers as needed
-        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
+    with ThreadPoolExecutor(max_workers=30) as executor:  # Increased max_workers
+        futures = {executor.submit(fetch_google_serp, keyword, i): keyword for i, keyword in enumerate(keywords)}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
             try:
@@ -269,7 +267,7 @@ if query:
 
     # Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
-        initial_keywords = get_autosuggest(query)
+        initial_keywords = get_autosuggest(query, worker_id=0)  # Use worker_id=0 for the initial request
         if initial_keywords:
             st.session_state.all_keywords.update(initial_keywords)
         progress_value = 1 / total_variations
