@@ -31,7 +31,9 @@ async def get_autosuggest(query, session):
     params = {"q": query, "client": "chrome"}
     logger.debug(f"Fetching autosuggest for: {query}")
     try:
-        async with session.get(url, params=params, proxy=PROXY_URL, timeout=10) as response:
+        # Temporarily bypass proxy for testing
+        # async with session.get(url, params=params, proxy=PROXY_URL, timeout=10) as response:
+        async with session.get(url, params=params, timeout=10) as response:  # Remove proxy for testing
             response.raise_for_status()
             data = await response.json()
             logger.debug(f"Successfully fetched autosuggest for: {query}")
@@ -67,7 +69,9 @@ async def fetch_google_serp(query, session, limit=5):
     url = f"https://www.google.com/search?q={query}"
     logger.debug(f"Fetching SERP for: {query}")
     try:
-        async with session.get(url, proxy=PROXY_URL, timeout=10) as response:
+        # Temporarily bypass proxy for testing
+        # async with session.get(url, proxy=PROXY_URL, timeout=10) as response:
+        async with session.get(url, timeout=10) as response:  # Remove proxy for testing
             if response.status == 200:
                 html = await response.text()
                 soup = BeautifulSoup(html, 'lxml')
