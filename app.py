@@ -6,7 +6,11 @@ from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
-from PyDictionary import PyDictionary  # For thesaurus-based synonyms
+import nltk
+from nltk.corpus import wordnet
+
+# Download WordNet data (only needed once)
+nltk.download('wordnet')
 
 # Oxylabs proxy endpoint
 PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
@@ -21,9 +25,6 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 # Initialize Gemini model (Updated to use Gemini 1.5 Pro)
 gemini_model = genai.GenerativeModel('gemini-1.5-pro')
-
-# Initialize thesaurus
-dictionary = PyDictionary()
 
 # Function to fetch Google autosuggest keywords with retries
 def get_autosuggest(query, max_retries=3):
@@ -48,14 +49,13 @@ def get_autosuggest(query, max_retries=3):
                 st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
     return []
 
-# Function to fetch synonyms using a thesaurus
+# Function to fetch synonyms using WordNet
 def get_synonyms(word):
-    try:
-        synonyms = dictionary.synonym(word)
-        return synonyms if synonyms else []
-    except Exception as e:
-        st.warning(f"Error fetching synonyms for '{word}': {e}")
-        return []
+    synonyms = set()
+    for syn in wordnet.synsets(word):
+        for lemma in syn.lemmas():
+            synonyms.add(lemma.name())
+    return list(synonyms)
 
 # Function to generate expanded keyword variations
 def generate_expanded_keywords(seed_keyword, user_modifiers=None):
