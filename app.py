@@ -4,14 +4,21 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import google.generativeai as genai
 from google.api_core import retry
-import nltk
-from nltk.corpus import wordnet
-from difflib import SequenceMatcher
 import os
 import string
+from nltk.stem import WordNetLemmatizer
+from difflib import SequenceMatcher
+from nltk.corpus import stopwords
 
-# Download WordNet data (only needed once)
+# Download WordNet and stopwords data (only needed once)
+import nltk
 nltk.download('wordnet')
+nltk.download('omw-1.4')
+nltk.download('stopwords')
+
+# Initialize lemmatizer and stopwords
+lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('english'))
 
 # Oxylabs proxy endpoint
 PROXY_USER = os.getenv("PROXY_USER", "customer-kasperpollas12345_Lyt6m-cc-us")
@@ -50,41 +57,46 @@ def get_autosuggest(query, max_retries=3):
                 st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
     return []
 
-# Function to fetch synonyms using WordNet
-def get_synonyms(word):
-    synonyms = set()
-    for syn in wordnet.synsets(word):
-        for lemma in syn.lemmas():
-            synonyms.add(lemma.name())
-    return list(synonyms)
+# Function to check if two words are similar (e.g., "monetization" and "monetize")
+def is_similar(word1, word2, threshold=0.8):
+    return SequenceMatcher(None, word1, word2).ratio() >= threshold
 
-# Function to calculate relevance score
-def calculate_relevance(keyword, seed_keyword):
-    seed_words = seed_keyword.lower().split()
-    keyword_words = keyword.lower().split()
-    return len(set(seed_words).intersection(keyword_words)) / len(seed_words)
+# Function to check if a keyword is relevant to the seed keyword
+def is_relevant(keyword, seed_keyword):
+    # Convert to lowercase for case-insensitive comparison
+    keyword_lower = keyword.lower()
+    seed_lower = seed_keyword.lower()
 
-# Function to check if two keywords are too similar
-def is_similar(keyword1, keyword2, threshold=0.8):
-    return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
+    # Lemmatize both the keyword and seed keyword, and remove stopwords
+    keyword_words = [lemmatizer.lemmatize(word) for word in keyword_lower.split() if word not in stop_words]
+    seed_words = [lemmatizer.lemmatize(word) for word in seed_lower.split() if word not in stop_words]
 
-# Function to generate expanded keyword variations
+    # Count the number of matching words
+    matching_words = 0
+    for kw_word in keyword_words:
+        for seed_word in seed_words:
+            if is_similar(kw_word, seed_word):
+                matching_words += 1
+                break  # Count each keyword word only once
+
+    # Check if the keyword contains at least n-1 words from the seed keyword
+    return matching_words >= (len(seed_words) - 1)
+
+# Function to generate expanded keyword variations with one level of recursion
 def generate_expanded_keywords(seed_keyword):
-    # Fetch Level 1 autosuggest keywords
-    level1_keywords = get_autosuggest(seed_keyword)
-
-    # Filter autosuggest keywords to include only those containing the seed keyword
-    filtered_keywords = [kw for kw in level1_keywords if seed_keyword.lower() in kw.lower()]
-
-    # Fetch synonyms for the seed keyword
-    synonyms = get_synonyms(seed_keyword)
-    relevant_synonyms = [syn for syn in synonyms if seed_keyword.lower() in syn.lower() or syn.lower() in seed_keyword.lower()]
-
-    # Combine all keywords
     all_keywords = set()
     all_keywords.add(seed_keyword)
-    all_keywords.update(filtered_keywords)
-    all_keywords.update(relevant_synonyms)
+
+    # Fetch Level 1 autosuggest keywords
+    level1_keywords = get_autosuggest(seed_keyword)
+    all_keywords.update(level1_keywords)
+
+    # Fetch Level 2 autosuggest keywords (one level of recursion)
+    for keyword in level1_keywords:
+        level2_keywords = get_autosuggest(keyword)
+        # Filter Level 2 keywords for relevance
+        filtered_level2_keywords = [kw for kw in level2_keywords if is_relevant(kw, seed_keyword)]
+        all_keywords.update(filtered_level2_keywords)
 
     # Universal modifiers (smaller set for better relevance)
     universal_modifiers = [
@@ -95,37 +107,19 @@ def generate_expanded_keywords(seed_keyword):
         "near me", "local"
     ]
 
-    # Apply universal modifiers to the seed keyword and filtered keywords
+    # Apply universal modifiers to all keywords
     for modifier in universal_modifiers:
-        all_keywords.add(f"{modifier} {seed_keyword}")
-        all_keywords.add(f"{seed_keyword} {modifier}")
-        for keyword in filtered_keywords:
+        for keyword in list(all_keywords):  # Use list to avoid modifying set during iteration
             all_keywords.add(f"{modifier} {keyword}")
             all_keywords.add(f"{keyword} {modifier}")
 
-    # Append each letter of the alphabet to the seed keyword
+    # Append each letter of the alphabet to all keywords
     for letter in string.ascii_lowercase:
-        all_keywords.add(f"{seed_keyword} {letter}")
-        all_keywords.add(f"{letter} {seed_keyword}")
+        for keyword in list(all_keywords):
+            all_keywords.add(f"{keyword} {letter}")
+            all_keywords.add(f"{letter} {keyword}")
 
-    # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
-    filtered_keywords = set()
-    for keyword in all_keywords:
-        if seed_keyword.lower() in keyword.lower():
-            filtered_keywords.add(keyword)
-        else:
-            for synonym in relevant_synonyms:
-                if synonym.lower() in keyword.lower():
-                    filtered_keywords.add(keyword)
-                    break
-
-    # Remove duplicate keywords
-    unique_keywords = []
-    for kw in filtered_keywords:
-        if not any(is_similar(kw, existing_kw) for existing_kw in unique_keywords):
-            unique_keywords.append(kw)
-
-    return unique_keywords
+    return list(all_keywords)
 
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries, progress_bar, status_text):
