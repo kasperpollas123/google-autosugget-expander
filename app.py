@@ -26,18 +26,24 @@ genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Function to fetch Google autosuggest keywords asynchronously
-async def get_autosuggest(query, session):
+async def get_autosuggest(query, session, retries=3):
     url = "https://www.google.com/complete/search"
     params = {"q": query, "client": "chrome"}
-    try:
-        async with session.get(url, params=params, proxy=PROXY_URL) as response:
-            response.raise_for_status()
-            data = await response.json()
-            logger.info(f"Successfully fetched autosuggest for: {query}")
-            return data[1]
-    except Exception as e:
-        logger.error(f"Error fetching autosuggest for '{query}': {e}")
-        return []
+    for attempt in range(retries):
+        try:
+            async with session.get(url, params=params, proxy=PROXY_URL, timeout=10) as response:
+                response.raise_for_status()
+                data = await response.json()
+                logger.info(f"Successfully fetched autosuggest for: {query}")
+                return data[1]
+        except Exception as e:
+            if attempt < retries - 1:
+                logger.warning(f"Retrying ({attempt + 1}/{retries}) for '{query}': {e}")
+                await asyncio.sleep(1)  # Wait before retrying
+            else:
+                logger.error(f"Failed to fetch autosuggest for '{query}': {e}")
+                return []
+    return []
 
 # Function to generate expanded keyword variations
 def generate_expanded_keywords(seed_keyword):
@@ -49,55 +55,65 @@ def generate_expanded_keywords(seed_keyword):
 
 # Function to fetch keywords concurrently using asyncio
 async def fetch_keywords_concurrently(queries):
-    semaphore = asyncio.Semaphore(100)  # Limit concurrent requests
+    semaphore = asyncio.Semaphore(50)  # Reduce concurrency to avoid rate-limiting
     async with aiohttp.ClientSession() as session:
         tasks = []
         for query in queries:
-            task = asyncio.create_task(get_autosuggest(query, session))
-            tasks.append(task)
+            async with semaphore:
+                task = asyncio.create_task(get_autosuggest(query, session))
+                tasks.append(task)
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return results
 
 # Function to fetch and parse Google SERP asynchronously
-async def fetch_google_serp(query, session, limit=5):
+async def fetch_google_serp(query, session, limit=5, retries=3):
     url = f"https://www.google.com/search?q={query}"
-    try:
-        async with session.get(url, proxy=PROXY_URL) as response:
-            if response.status == 200:
-                html = await response.text()
-                soup = BeautifulSoup(html, 'lxml')
-                results = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
-                    if "ads" in result.get("class", []):
-                        continue
-                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
-                    title = title_element.get_text().strip() if title_element else "No Title Found"
-                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
-                                         result.find('div', class_='v9i61e') or \
-                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
-                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
-                    description = description_element.get_text().strip() if description_element else "No Description Found"
-                    results.append({
-                        "title": title,
-                        "description": description
-                    })
-                logger.info(f"Successfully fetched SERP for: {query}")
-                return results
+    for attempt in range(retries):
+        try:
+            async with session.get(url, proxy=PROXY_URL, timeout=10) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'lxml')
+                    results = []
+                    for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
+                        if "ads" in result.get("class", []):
+                            continue
+                        title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
+                        title = title_element.get_text().strip() if title_element else "No Title Found"
+                        description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
+                                             result.find('div', class_='v9i61e') or \
+                                             result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
+                                             result.find('div', class_='BNeawe s3v9rd AP7Wnd')
+                        description = description_element.get_text().strip() if description_element else "No Description Found"
+                        results.append({
+                            "title": title,
+                            "description": description
+                        })
+                    logger.info(f"Successfully fetched SERP for: {query}")
+                    return results
+                elif response.status == 429:  # Rate limit exceeded
+                    logger.warning(f"Rate limit exceeded for '{query}'. Retrying ({attempt + 1}/{retries})...")
+                    await asyncio.sleep(10)  # Wait before retrying
+                else:
+                    logger.error(f"Error fetching SERP for '{query}': Status code {response.status}")
+                    return f"Error: Status code {response.status}"
+        except Exception as e:
+            logger.error(f"Error fetching SERP for '{query}': {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(5)  # Wait before retrying
             else:
-                logger.error(f"Error fetching SERP for '{query}': Status code {response.status}")
-                return f"Error: Status code {response.status}"
-    except Exception as e:
-        logger.error(f"Error fetching SERP for '{query}': {e}")
-        return f"Error: {e}"
+                return f"Error: {e}"
+    return f"Error: Max retries reached for '{query}'."
 
 # Function to fetch SERP results concurrently using asyncio
 async def fetch_serp_results_concurrently(keywords):
-    semaphore = asyncio.Semaphore(100)  # Limit concurrent requests
+    semaphore = asyncio.Semaphore(50)  # Reduce concurrency to avoid rate-limiting
     async with aiohttp.ClientSession() as session:
         tasks = []
         for keyword in keywords:
-            task = asyncio.create_task(fetch_google_serp(keyword, session))
-            tasks.append(task)
+            async with semaphore:
+                task = asyncio.create_task(fetch_google_serp(keyword, session))
+                tasks.append(task)
         results = await asyncio.gather(*tasks, return_exceptions=True)
         return dict(zip(keywords, results))
 
@@ -232,6 +248,8 @@ if query:
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
             st.markdown(st.session_state.gemini_output)
+        else:
+            st.write("No valid SERP results found for analysis.")
     else:
         st.write("No keywords found.")
 else:
