@@ -57,7 +57,7 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries):
     all_keywords = set()
-    with ThreadPoolExecutor(max_workers=100) as executor:
+    with ThreadPoolExecutor(max_workers=200) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
@@ -122,7 +122,7 @@ def fetch_google_serp(query, limit=5, retries=3):
 # Function to fetch SERP results concurrently
 def fetch_serp_results_concurrently(keywords):
     serp_results = {}
-    with ThreadPoolExecutor(max_workers=100) as executor:  # Adjust max_workers as needed
+    with ThreadPoolExecutor(max_workers=200) as executor:  # Adjust max_workers as needed
         futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
