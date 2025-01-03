@@ -8,7 +8,6 @@ import nltk
 from nltk.corpus import wordnet
 from difflib import SequenceMatcher
 import os
-import string  # For alphabet letters
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
@@ -68,20 +67,13 @@ def calculate_relevance(keyword, seed_keyword):
 def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
 
-# Function to append alphabet letters to keywords
-def append_alphabet(keywords):
-    alphabet = list(string.ascii_lowercase)  # a, b, c, ..., z
-    expanded_keywords = set()
-    for keyword in keywords:
-        for letter in alphabet:
-            expanded_keywords.add(f"{keyword} {letter}")
-            expanded_keywords.add(f"{letter} {keyword}")
-    return list(expanded_keywords)
-
 # Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword):
+def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
+
+    # Filter autosuggest keywords to include only those containing the seed keyword
+    filtered_keywords = [kw for kw in level1_keywords if seed_keyword.lower() in kw.lower()]
 
     # Fetch synonyms for the seed keyword
     synonyms = get_synonyms(seed_keyword)
@@ -90,17 +82,25 @@ def generate_expanded_keywords(seed_keyword):
     # Combine all keywords
     all_keywords = set()
     all_keywords.add(seed_keyword)
-    all_keywords.update(level1_keywords)
+    all_keywords.update(filtered_keywords)
     all_keywords.update(relevant_synonyms)
 
-    # Append alphabet letters to each keyword
-    all_keywords = append_alphabet(all_keywords)
+    # Universal modifiers (smaller set for better relevance)
+    universal_modifiers = [
+        "how to", "why is", "what is", "where to",
+        "buy", "hire", "find", "near me",
+        "best", "affordable", "top",
+        "emergency", "24/7",
+        "near me", "local"
+    ]
 
-    # Fetch autosuggest keywords for the expanded list
-    expanded_keywords = fetch_keywords_concurrently(all_keywords, st.progress(0), st.empty())
-
-    # Combine all keywords
-    all_keywords.update(expanded_keywords)
+    # Apply universal modifiers to the seed keyword and filtered keywords
+    for modifier in universal_modifiers:
+        all_keywords.add(f"{modifier} {seed_keyword}")
+        all_keywords.add(f"{seed_keyword} {modifier}")
+        for keyword in filtered_keywords:
+            all_keywords.add(f"{modifier} {keyword}")
+            all_keywords.add(f"{keyword} {modifier}")
 
     # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
     filtered_keywords = set()
@@ -119,10 +119,11 @@ def generate_expanded_keywords(seed_keyword):
         if not any(is_similar(kw, existing_kw) for existing_kw in unique_keywords):
             unique_keywords.append(kw)
 
-    return unique_keywords
+    # Limit the number of keywords
+    return unique_keywords[:max_keywords]
 
 # Function to fetch keywords concurrently using multi-threading
-def fetch_keywords_concurrently(queries, progress_bar, status_text):
+def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
     all_keywords = set()
     with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
@@ -134,9 +135,11 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text):
                 progress_value = i / len(queries)
                 progress_bar.progress(min(progress_value, 1.0))
                 status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
+                if len(all_keywords) >= max_keywords:
+                    break  # Stop fetching once the maximum limit is reached
             except Exception as e:
                 st.error(f"Error fetching keywords: {e}")
-    return list(all_keywords)
+    return list(all_keywords)[:max_keywords]
 
 # Function to analyze keywords with Gemini (only keywords, no SERP data)
 def analyze_keywords_with_gemini(keywords, seed_keyword):
@@ -201,7 +204,7 @@ with st.sidebar:
     query = st.text_input("Enter a seed keyword:")
     st.markdown("---")
     st.markdown("**Instructions:**")
-    st.markdown("1. Enter a seed keyword (e.g., 'guitar').")
+    st.markdown("1. Enter a seed keyword (e.g., 'AI').")
     st.markdown("2. The app will fetch autosuggest keywords.")
     st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
@@ -220,9 +223,15 @@ if query:
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query)
+    expanded_keywords = generate_expanded_keywords(query, max_keywords=500)
 
-    # Step 3: Analyze keywords with Gemini
+    # Step 3: Fetch autosuggest keywords concurrently
+    with st.spinner("Fetching autosuggest keywords concurrently..."):
+        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text, max_keywords=500))
+        progress_bar.progress(0.5)
+        status_text.text("Fetching expanded autosuggest keywords...")
+
+    # Step 4: Analyze keywords with Gemini
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
