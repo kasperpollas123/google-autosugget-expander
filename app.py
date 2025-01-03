@@ -12,6 +12,8 @@ from difflib import SequenceMatcher
 import os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 import random
 
 # Download WordNet data (only needed once)
@@ -127,13 +129,22 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
+# Initialize a single ChromeDriver instance
+def init_chromedriver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--no-sandbox")  # Required for running in cloud environments
+    options.add_argument("--disable-dev-shm-usage")  # Avoids memory issues
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    return driver
+
+# Shared ChromeDriver instance
+driver = init_chromedriver()
+
 # Function to fetch and parse Google SERP using Selenium (limit to 3 results)
 def fetch_google_serp(query, limit=3, retries=3):
-    options = Options()
-    options.add_argument("--headless")  # Run in headless mode
-    options.add_argument("--disable-blink-features=AutomationControlled")  # Avoid detection
-    driver = webdriver.Chrome(options=options)
-    
+    global driver
     for attempt in range(retries):
         try:
             driver.get(f"https://www.google.com/search?q={query}")
@@ -154,16 +165,13 @@ def fetch_google_serp(query, limit=3, retries=3):
                     "title": title,
                     "description": description
                 })
-            driver.quit()
             return results
         except Exception as e:
             if attempt < retries - 1:
                 time.sleep(10)
                 continue
             else:
-                driver.quit()
                 return f"An error occurred for '{query}': {e}"
-    driver.quit()
     return f"Error: Max retries reached for '{query}'."
 
 # Function to fetch keywords concurrently using multi-threading
@@ -185,22 +193,19 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords
                 st.error(f"Error fetching keywords: {e}")
     return list(all_keywords)[:max_keywords]
 
-# Function to fetch SERP results concurrently (uses Selenium)
-def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
+# Function to fetch SERP results sequentially (uses Selenium)
+def fetch_serp_results_sequentially(keywords, progress_bar, status_text):
     serp_results = {}
-    with ThreadPoolExecutor(max_workers=10) as executor:  # Reduced max_workers
-        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
-        for i, future in enumerate(as_completed(futures), start=1):
-            keyword = futures[future]
-            try:
-                result = future.result()
-                serp_results[keyword] = result
-                progress_value = i / len(keywords)
-                progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
-                time.sleep(random.uniform(2, 5))  # Random delay between requests
-            except Exception as e:
-                st.error(f"Error fetching SERP results for '{keyword}': {e}")
+    for i, keyword in enumerate(keywords, start=1):
+        try:
+            result = fetch_google_serp(keyword)
+            serp_results[keyword] = result
+            progress_value = i / len(keywords)
+            progress_bar.progress(min(progress_value, 1.0))
+            status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
+            time.sleep(random.uniform(2, 5))  # Random delay between requests
+        except Exception as e:
+            st.error(f"Error fetching SERP results for '{keyword}': {e}")
     return serp_results
 
 # Function to format SERP data for logging
@@ -317,22 +322,15 @@ if query:
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP results for each keyword concurrently (uses Selenium)
+    # Step 4: Fetch SERP results sequentially (uses Selenium)
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        # Debugging: Log the number of keywords being processed
-        st.write(f"Debug: Fetching SERP results for {len(st.session_state.all_keywords)} keywords...")
-
-        with st.spinner("Fetching SERP results for each keyword concurrently..."):
-            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
+        with st.spinner("Fetching SERP results sequentially..."):
+            st.session_state.serp_results = fetch_serp_results_sequentially(st.session_state.all_keywords, progress_bar, status_text)
             progress_bar.progress(0.8)
             status_text.text("Fetching SERP results...")
-
-        # Debugging: Log the contents of serp_results
-        st.write("Debug: SERP Results Dictionary")
-        st.write(st.session_state.serp_results)
 
         # Log SERP data in a collapsible box (for inspection only)
         with st.expander("View Scraped SERP Data (Sample)"):
