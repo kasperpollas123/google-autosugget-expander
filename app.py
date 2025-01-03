@@ -50,9 +50,6 @@ def is_similar(keyword1, keyword2, threshold=0.8):
 
 # Function to generate expanded keyword variations (Level 1)
 def generate_expanded_keywords(seed_keyword):
-    # Fetch Level 1 autosuggest keywords
-    level1_keywords = get_autosuggest(seed_keyword)
-
     # Universal modifiers
     universal_modifiers = [
         "how to", "why is", "what is", "where to",
@@ -65,18 +62,24 @@ def generate_expanded_keywords(seed_keyword):
     # Alphabet modifiers (A-Z)
     alphabet_modifiers = [chr(i) for i in range(ord('a'), ord('z') + 1)]
 
-    # Combine all keywords
-    all_keywords = set()
-    all_keywords.add(seed_keyword)
-    all_keywords.update(level1_keywords)
-
-    # Apply universal modifiers to the seed keyword
+    # Generate modified seed keywords
+    modified_seed_keywords = []
     for modifier in universal_modifiers:
-        all_keywords.add(f"{seed_keyword} {modifier}")
-
-    # Apply alphabet modifiers to the seed keyword
+        modified_seed_keywords.append(f"{seed_keyword} {modifier}")
     for letter in alphabet_modifiers:
-        all_keywords.add(f"{seed_keyword} {letter}")
+        modified_seed_keywords.append(f"{seed_keyword} {letter}")
+
+    # Fetch autosuggestions for each modified seed keyword
+    all_keywords = set()
+    with ThreadPoolExecutor(max_workers=500) as executor:
+        futures = {executor.submit(get_autosuggest, query): query for query in modified_seed_keywords}
+        for i, future in enumerate(as_completed(futures), start=1):
+            try:
+                keywords = future.result()
+                if keywords:
+                    all_keywords.update(keywords)
+            except Exception as e:
+                st.error(f"Error fetching autosuggest keywords for '{modified_seed_keywords[i-1]}': {e}")
 
     # Remove duplicate keywords
     unique_keywords = []
@@ -184,7 +187,7 @@ if query:
         initial_keywords = get_autosuggest(query)
         if initial_keywords:
             st.session_state.all_keywords.update(initial_keywords)
-            # Log Level 1 keywords
+            # Log Level 1 keywords (initial autosuggestions)
             with st.expander("Level 1 Keywords (Initial Autosuggestions)"):
                 st.write(initial_keywords)
         progress_bar.progress(0.2)
