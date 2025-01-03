@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from selectolax.parser import HTMLParser  # Replaced BeautifulSoup with selectolax
+from selectolax.parser import HTMLParser
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
@@ -140,16 +140,13 @@ def fetch_google_serp(query, limit=3, retries=3):
                 # Use selectolax to parse the HTML
                 parser = HTMLParser(response.text)
                 results = []
-                for result in parser.css('div.Gx5Zad.xpd.EtOod.pkphOe')[:limit]:
-                    if "ads" in result.attributes.get("class", ""):
-                        continue
-                    title_element = result.css_first('h3') or result.css_first('h2') or result.css_first('div.BNeawe.vvjwJb.AP7Wnd')
+                for result in parser.css('div.tF2Cxc')[:limit]:  # Updated selector for Google SERP results
+                    title_element = result.css_first('h3')  # Updated selector for title
+                    description_element = result.css_first('div.VwiC3b')  # Updated selector for description
+
                     title = title_element.text().strip() if title_element else "No Title Found"
-                    description_element = result.css_first('div.BNeawe.s3v9rd.AP7Wnd') or \
-                                         result.css_first('div.v9i61e') or \
-                                         result.css_first('div.BNeawe.UPmit.AP7Wnd.lRVwie') or \
-                                         result.css_first('div.BNeawe.s3v9rd.AP7Wnd')
                     description = description_element.text().strip() if description_element else "No Description Found"
+
                     results.append({
                         "title": title,
                         "description": description
