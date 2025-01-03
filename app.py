@@ -130,8 +130,8 @@ def generate_expanded_keywords(seed_keyword, goal, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Updated Function to fetch and parse Google SERP (only first result, uses proxy)
-def fetch_google_serp(query, retries=3):
+# Function to fetch top 3 links from Google SERP (uses proxy)
+def fetch_serp_links(query, retries=3):
     url = f"https://www.google.com/search?q={query}"
     proxies = {
         "http": PROXY_URL,
@@ -144,26 +144,12 @@ def fetch_google_serp(query, retries=3):
             response = session.get(url, proxies=proxies)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
-                results = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe'):
-                    if "ads" in result.get("class", []):
-                        continue
-                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
-                    title = title_element.get_text().strip() if title_element else None
-                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
-                                         result.find('div', class_='v9i61e') or \
-                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
-                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
-                    description = description_element.get_text().strip() if description_element else None
-
-                    # Only return the first valid result with both title and description
-                    if title and description:
-                        return [{
-                            "title": title,
-                            "description": description
-                        }]
-                # If no valid result is found, return an error message
-                return f"No valid SERP result found for '{query}'."
+                links = []
+                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:3]:  # Limit to top 3 results
+                    link_element = result.find('a', href=True)
+                    if link_element:
+                        links.append(link_element['href'])
+                return links
             elif response.status_code == 429:
                 if attempt < retries - 1:
                     time.sleep(10)
@@ -182,58 +168,42 @@ def fetch_google_serp(query, retries=3):
             return f"An error occurred for '{query}': {e}"
     return f"Error: Max retries reached for '{query}'."
 
-# Function to fetch keywords concurrently using multi-threading
-def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
-    all_keywords = set()
-    with ThreadPoolExecutor(max_workers=500) as executor:
-        futures = {executor.submit(get_autosuggest, query): query for query in queries}
-        for i, future in enumerate(as_completed(futures), start=1):
-            try:
-                keywords = future.result()
-                if keywords:
-                    all_keywords.update(keywords)
-                progress_value = i / len(queries)
-                progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
-                if len(all_keywords) >= max_keywords:
-                    break  # Stop fetching once the maximum limit is reached
-            except Exception as e:
-                st.error(f"Error fetching keywords: {e}")
-    return list(all_keywords)[:max_keywords]
+# Function to scrape content from a link (without proxy)
+def scrape_page_content(url):
+    try:
+        response = requests.get(url, timeout=10)  # Direct request (no proxy)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'lxml')
+            # Extract relevant content (e.g., headings and paragraphs)
+            content = ""
+            for tag in soup.find_all(['h1', 'h2', 'h3', 'p']):  # Customize based on your needs
+                content += f"{tag.text}\n"
+            return content
+        else:
+            return f"Error: Unable to fetch content from '{url}'. Status code: {response.status_code}"
+    except Exception as e:
+        return f"An error occurred while scraping '{url}': {e}"
 
-# Function to fetch SERP results concurrently (uses proxy)
-def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
-    serp_results = {}
-    with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
-        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
-        for i, future in enumerate(as_completed(futures), start=1):
-            keyword = futures[future]
-            try:
-                result = future.result()
-                serp_results[keyword] = result
-                progress_value = i / len(keywords)
-                progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
-            except Exception as e:
-                st.error(f"Error fetching SERP results for '{keyword}': {e}")
-    return serp_results
+# Function to fetch SERP links and scrape content for all keywords
+def fetch_serp_links_and_content(keywords):
+    serp_data = {}
+    for keyword in keywords:
+        # Fetch top 3 links for the keyword
+        links = fetch_serp_links(keyword)
+        if isinstance(links, list):  # Ensure links were fetched successfully
+            serp_data[keyword] = []
+            for link in links:
+                # Scrape content from the link
+                content = scrape_page_content(link)
+                if content and not content.startswith("Error"):  # Ensure content was scraped successfully
+                    serp_data[keyword].append({
+                        "link": link,
+                        "content": content
+                    })
+    return serp_data
 
-# Function to format SERP data for logging
-def format_serp_data_for_logging(serp_results):
-    log_output = ""
-    for keyword, results in serp_results.items():
-        if isinstance(results, list):  # Only process valid SERP results
-            log_output += f"Keyword: {keyword}\n"
-            for i, result in enumerate(results, start=1):
-                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
-                    log_output += f"  Result {i}:\n"
-                    log_output += f"    Title: {result['title']}\n"
-                    log_output += f"    Description: {result['description']}\n"
-            log_output += "\n"
-    return log_output
-
-# Function to analyze keywords with Gemini
-def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword, goal):
+# Function to analyze keywords with Gemini (with grounding)
+def analyze_keywords_with_gemini(keywords, serp_data, seed_keyword, goal):
     # System instructions and chat input
     prompt = f"""
     Please analyze the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. 
@@ -257,15 +227,26 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword, goal):
 
     # Prepare the chat input for Gemini
     chat_input = "Here is the list of keywords and their SERP results:\n"
-    for keyword, results in serp_results.items():
+    for keyword, results in serp_data.items():
         if isinstance(results, list):  # Only process valid SERP results
             chat_input += f"Keyword: {keyword}\n"
             for i, result in enumerate(results, start=1):
-                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
+                if isinstance(result, dict) and "link" in result and "content" in result:  # Ensure result is valid
                     chat_input += f"  Result {i}:\n"
-                    chat_input += f"    Title: {result['title']}\n"
-                    chat_input += f"    Description: {result['description']}\n"
+                    chat_input += f"    Link: {result['link']}\n"
+                    chat_input += f"    Content: {result['content'][:500]}...\n"  # Show first 500 characters of content
             chat_input += "\n"
+
+    # Grounding: Add SERP data as grounding context
+    grounding_context = f"""
+    **Grounding Context (SERP Data):**
+    Below are the search engine results (SERP) for the keywords. Use this information to ground your analysis and ensure the themes are relevant and up-to-date.
+
+    {chat_input}
+    """
+
+    # Combine the prompt, grounding context, and chat input
+    full_input = [prompt, grounding_context]
 
     # Configure Gemini generation settings
     generation_config = {
@@ -277,7 +258,7 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword, goal):
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
-            contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
+            contents=full_input,  # Pass prompt and grounding context
             generation_config=generation_config,
             request_options={"timeout": 600},  # 10-minute timeout
         )
@@ -296,8 +277,8 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword, goal):
 # Initialize session state to store keywords and SERP results
 if "all_keywords" not in st.session_state:
     st.session_state.all_keywords = set()
-if "serp_results" not in st.session_state:
-    st.session_state.serp_results = {}
+if "serp_data" not in st.session_state:
+    st.session_state.serp_data = {}
 if "gemini_output" not in st.session_state:
     st.session_state.gemini_output = None
 
@@ -336,17 +317,17 @@ if query and goal:  # Ensure both seed keyword and goal are provided
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP results for each keyword concurrently (uses proxy)
+    # Step 4: Fetch SERP links and scrape content for each keyword
     if st.session_state.all_keywords:
-        with st.spinner("Fetching SERP results for each keyword concurrently..."):
-            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
+        with st.spinner("Fetching SERP links and scraping content..."):
+            st.session_state.serp_data = fetch_serp_links_and_content(st.session_state.all_keywords)
             progress_bar.progress(0.8)
-            status_text.text("Fetching SERP results...")
+            status_text.text("Fetching SERP results and scraping content...")
 
         # Step 5: Analyze keywords with Gemini
-        if st.session_state.serp_results:
+        if st.session_state.serp_data:
             with st.spinner("Analyzing keywords with Gemini..."):
-                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results, query, goal)
+                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_data, query, goal)
                 progress_bar.progress(1.0)
                 status_text.text("Analysis complete!")
 
@@ -409,5 +390,5 @@ if query and goal:  # Ensure both seed keyword and goal are provided
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = set()
-    st.session_state.serp_results = {}
+    st.session_state.serp_data = {}
     st.session_state.gemini_output = None
