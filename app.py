@@ -20,8 +20,8 @@ PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize Gemini model (Updated to use Gemini 1.5 Flash)
-gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+# Initialize Gemini model (Updated to use Gemini 1.5 Pro)
+gemini_model = genai.GenerativeModel('gemini-1.5-pro')
 
 # Function to fetch Google autosuggest keywords with retries
 def get_autosuggest(query, max_retries=3):
@@ -66,7 +66,7 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text):
                     all_keywords.update(keywords)
                 progress_value = i / len(queries)
                 progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Progress: {i}/{len(queries)} variations completed")
+                status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
             except Exception as e:
                 st.error(f"Error fetching keywords: {e}")
     return all_keywords
@@ -131,7 +131,7 @@ def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
                 serp_results[keyword] = result
                 progress_value = i / len(keywords)
                 progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"SERP Progress: {i}/{len(keywords)} keywords completed")
+                status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
             except Exception as e:
                 st.error(f"Error fetching SERP results for '{keyword}': {e}")
     return serp_results
@@ -207,12 +207,13 @@ def analyze_keywords_with_gemini(keywords, serp_results):
         "max_output_tokens": 10000,  # Increase output token limit to 10,000
     }
 
-    # Retry logic for API calls
+    # Retry logic for API calls with longer timeout
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
             contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
             generation_config=generation_config,
+            request_options={"timeout": 300},  # 5-minute timeout
         )
 
     try:
@@ -255,7 +256,7 @@ if query:
         if initial_keywords:
             st.session_state.all_keywords.update(initial_keywords)
         progress_bar.progress(0.2)
-        status_text.text("Step 1/4: Fetched initial autosuggest keywords.")
+        status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
@@ -264,7 +265,7 @@ if query:
     with st.spinner("Fetching autosuggest keywords concurrently..."):
         st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text))
         progress_bar.progress(0.5)
-        status_text.text("Step 2/4: Fetched expanded autosuggest keywords.")
+        status_text.text("Fetching expanded autosuggest keywords...")
 
     # Step 4: Fetch SERP results for each keyword concurrently
     if st.session_state.all_keywords:
@@ -274,14 +275,14 @@ if query:
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
             st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
             progress_bar.progress(0.8)
-            status_text.text("Step 3/4: Fetched SERP results for all keywords.")
+            status_text.text("Fetching SERP results...")
 
         # Step 5: Analyze keywords with Gemini
         if st.session_state.serp_results:
             with st.spinner("Analyzing keywords with Gemini..."):
                 st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
                 progress_bar.progress(1.0)
-                status_text.text("Step 4/4: Analysis complete!")
+                status_text.text("Analysis complete!")
 
         # Display Gemini output as collapsible cards
         if st.session_state.gemini_output:
