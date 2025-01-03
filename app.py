@@ -27,7 +27,17 @@ gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Custom headers to mimic a real browser
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Referer": "https://www.google.com/",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 # Function to fetch Google autosuggest keywords asynchronously
@@ -36,11 +46,17 @@ async def get_autosuggest(query, session):
     params = {"q": query, "client": "chrome"}
     logger.debug(f"Fetching autosuggest for: {query}")
     try:
-        async with session.get(url, params=params, headers=HEADERS, timeout=10) as response:
+        async with session.get(url, params=params, headers=HEADERS, proxy=PROXY_URL, timeout=10) as response:
             response.raise_for_status()
             data = await response.text()  # Log raw response data
             logger.debug(f"Raw response for '{query}': {data}")
-            return response.json()[1]
+            json_data = await response.json()  # Parse JSON response
+            logger.debug(f"Parsed JSON response for '{query}': {json_data}")
+            if isinstance(json_data, list) and len(json_data) > 1:
+                return json_data[1]  # Return the list of suggestions
+            else:
+                logger.error(f"Unexpected response format for '{query}': {json_data}")
+                return []
     except Exception as e:
         logger.error(f"Error fetching autosuggest for '{query}': {e}")
         return []
@@ -56,7 +72,7 @@ def generate_expanded_keywords(seed_keyword):
 
 # Function to fetch keywords concurrently using asyncio
 async def fetch_keywords_concurrently(queries):
-    semaphore = asyncio.Semaphore(20)  # Reduce concurrency to avoid rate-limiting
+    semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         tasks = []
         for query in queries:
@@ -72,7 +88,7 @@ async def fetch_google_serp(query, session, limit=5):
     url = f"https://www.google.com/search?q={query}"
     logger.debug(f"Fetching SERP for: {query}")
     try:
-        async with session.get(url, headers=HEADERS, timeout=10) as response:
+        async with session.get(url, headers=HEADERS, proxy=PROXY_URL, timeout=10) as response:
             if response.status == 200:
                 html = await response.text()
                 soup = BeautifulSoup(html, 'lxml')
@@ -102,7 +118,7 @@ async def fetch_google_serp(query, session, limit=5):
 
 # Function to fetch SERP results concurrently using asyncio
 async def fetch_serp_results_concurrently(keywords):
-    semaphore = asyncio.Semaphore(20)  # Reduce concurrency to avoid rate-limiting
+    semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         tasks = []
         for keyword in keywords:
