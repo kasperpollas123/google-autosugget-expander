@@ -1,9 +1,9 @@
-streamlit
-requests
+streamlit==1.32.0
+requests==2.31.0
 beautifulsoup4
 lxml
 pandas
-google-generativeai
+google-generativeai==0.3.2
 aiohttp
 nltk==3.8.1
 selenium==4.15.2
