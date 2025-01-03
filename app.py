@@ -6,6 +6,7 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
+import google.generativeai as genai
 
 # Oxylabs proxy endpoint
 PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
@@ -13,6 +14,13 @@ PROXY_PASS = "Snaksnak12345+"
 PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+
+# Google Gemini API key
+GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Initialize Gemini model
+gemini_model = genai.GenerativeModel('gemini-1.5-pro')
 
 # Function to fetch Google autosuggest keywords with retries
 def get_autosuggest(query, max_retries=3):
@@ -127,14 +135,33 @@ def fetch_serp_results_concurrently(keywords):
                 st.error(f"Error fetching SERP results for '{keyword}': {e}")
     return serp_results
 
+# Function to analyze keywords with Gemini
+def analyze_keywords_with_gemini(keywords, serp_results):
+    # Prepare the input for Gemini
+    input_text = "Please analyse the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. You may use the same keyword more than once in different themes but only once in each theme. The themes should have a catchy and inspiring headline and underneath the headline should simply be the keywords that are grouped together. For each group please remove and omit keywords that are too similar to other keywords and basically mean the same thing and reflect the same intent like for example 'my cat peeing everywhere' and 'cat is peeing everywhere'. You are not allowed to make up keywords that are not on the list i give you. Please limit each group to a maximum of 20 keywords. If there are any keywords that stick out as weird for example asking for the keyword in a specific language or if they just stick out to much compared to the overall intent of most of the keywords, then please remove them.\n\n"
+    input_text += "Here is the list of keywords and their SERP results:\n"
+    for keyword, results in serp_results.items():
+        input_text += f"Keyword: {keyword}\n"
+        for i, result in enumerate(results, start=1):
+            input_text += f"  Result {i}:\n"
+            input_text += f"    Title: {result['title']}\n"
+            input_text += f"    Description: {result['description']}\n"
+        input_text += "\n"
+
+    # Send the input to Gemini
+    response = gemini_model.generate_content(input_text)
+    return response.text
+
 # Streamlit UI
-st.title("Google Autosuggest Keyword Fetcher with SERP Results")
+st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
 
 # Initialize session state to store keywords and SERP results
 if "all_keywords" not in st.session_state:
     st.session_state.all_keywords = set()
 if "serp_results" not in st.session_state:
     st.session_state.serp_results = {}
+if "gemini_output" not in st.session_state:
+    st.session_state.gemini_output = None
 
 query = st.text_input("Enter a seed keyword:")
 
@@ -172,20 +199,18 @@ if query:
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
             st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords)
 
-        # Display SERP results for each keyword
-        st.subheader("SERP Results for Each Keyword")
-        for keyword, results in st.session_state.serp_results.items():
-            if isinstance(results, list):
-                st.markdown(f"**Keyword:** {keyword}")
-                for i, result in enumerate(results, start=1):
-                    st.markdown(f"**Result {i}**")
-                    st.markdown(f"**Title:** {result['title']}")
-                    st.markdown(f"**Description:** {result['description']}")
-                    st.markdown("---")
-            else:
-                st.error(f"Error for keyword '{keyword}': {results}")
+        # Analyze keywords with Gemini
+        if st.session_state.serp_results:
+            with st.spinner("Analyzing keywords with Gemini..."):
+                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
+
+        # Display Gemini output
+        if st.session_state.gemini_output:
+            st.subheader("Keyword Themes and Groups")
+            st.markdown(st.session_state.gemini_output)
     else:
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = set()
     st.session_state.serp_results = {}
+    st.session_state.gemini_output = None
