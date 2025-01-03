@@ -215,9 +215,13 @@ query = st.text_input("Enter a seed keyword:")
 if query:
     # Step 1: Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
+        async def fetch_initial_keywords():
+            async with aiohttp.ClientSession() as session:
+                return await get_autosuggest(query, session)
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        initial_keywords = loop.run_until_complete(get_autosuggest(query, aiohttp.ClientSession()))
+        initial_keywords = loop.run_until_complete(fetch_initial_keywords())
         if initial_keywords:
             st.session_state.all_keywords.update(initial_keywords)
             st.success(f"Fetched {len(initial_keywords)} initial keywords.")
@@ -229,7 +233,10 @@ if query:
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching expanded autosuggest keywords concurrently..."):
-        results = loop.run_until_complete(fetch_keywords_concurrently(expanded_keywords))
+        async def fetch_expanded_keywords():
+            return await fetch_keywords_concurrently(expanded_keywords)
+
+        results = loop.run_until_complete(fetch_expanded_keywords())
 
         # Filter out exceptions and ensure only valid lists are processed
         valid_keywords = []
@@ -246,7 +253,10 @@ if query:
     # Step 4: Fetch SERP results concurrently
     if st.session_state.all_keywords:
         with st.spinner("Fetching SERP results concurrently..."):
-            serp_results = loop.run_until_complete(fetch_serp_results_concurrently(st.session_state.all_keywords))
+            async def fetch_serp_results():
+                return await fetch_serp_results_concurrently(st.session_state.all_keywords)
+
+            serp_results = loop.run_until_complete(fetch_serp_results())
             st.session_state.serp_results = serp_results
             st.success(f"Fetched SERP results for {len(serp_results)} keywords.")
 
