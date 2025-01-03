@@ -149,23 +149,20 @@ def fetch_bing_serp(query, limit=3, retries=3):
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
                 
-                # Find all organic search result containers (class="b_algo")
-                organic_results = soup.find_all('li', class_='b_algo')[:limit]
+                # Find all genuine organic search result containers (li.b_algo without b_ad or b_ans)
+                organic_results = soup.select('li.b_algo:not(.b_ad):not(.b_ans)')[:limit]
                 
                 for result in organic_results:
-                    # Extract title (usually inside h2 > a)
-                    title_element = result.find('h2')
-                    if title_element:
-                        title = title_element.find('a').get_text(strip=True) if title_element.find('a') else "No Title Found"
-                    else:
-                        title = "No Title Found"
+                    # Extract title (h2 > a)
+                    title_element = result.select_one('h2 a')
+                    title = title_element.get_text(strip=True) if title_element else "No Title Found"
                     
-                    # Extract description (usually inside p or div with class="b_caption")
-                    description_element = result.find('p') or result.find('div', class_='b_caption')
-                    if description_element:
-                        description = description_element.get_text(strip=True)
-                    else:
-                        description = "No Description Found"
+                    # Extract description (p within .b_caption or .snippet)
+                    description_element = (
+                        result.select_one('.b_caption p') or
+                        result.select_one('.snippet p')
+                    )
+                    description = description_element.get_text(strip=True) if description_element else ""
                     
                     # Append the result to the list
                     results.append({
