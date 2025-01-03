@@ -73,13 +73,13 @@ def generate_expanded_keywords(seed_keyword):
     all_keywords = set()
     with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in modified_seed_keywords}
-        for i, future in enumerate(as_completed(futures), start=1):
+        for future in as_completed(futures):
             try:
                 keywords = future.result()
                 if keywords:
                     all_keywords.update(keywords)
             except Exception as e:
-                st.error(f"Error fetching autosuggest keywords for '{modified_seed_keywords[i-1]}': {e}")
+                st.error(f"Error fetching autosuggest keywords: {e}")
 
     # Remove duplicate keywords
     unique_keywords = []
@@ -95,18 +95,19 @@ def generate_level2_keywords(level1_keywords, progress_bar, status_text):
     with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in level1_keywords}
         for i, future in enumerate(as_completed(futures), start=1):
+            query = futures[future]  # Get the query associated with this future
             try:
                 keywords = future.result()
                 if keywords:
                     all_keywords.update(keywords)
                     # Log Level 2 keywords
-                    with st.expander(f"Level 2 Keywords for '{level1_keywords[i-1]}'"):
+                    with st.expander(f"Level 2 Keywords for '{query}'"):
                         st.write(keywords)
                 progress_value = i / len(level1_keywords)
                 progress_bar.progress(min(progress_value, 1.0))
                 status_text.text(f"Fetching Level 2 keywords: {i}/{len(level1_keywords)} completed")
             except Exception as e:
-                st.error(f"Error fetching Level 2 keywords: {e}")
+                st.error(f"Error fetching Level 2 keywords for '{query}': {e}")
     return list(all_keywords)
 
 # Function to analyze keywords with Gemini (only keywords, no SERP data)
