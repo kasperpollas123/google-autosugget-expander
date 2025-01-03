@@ -124,60 +124,35 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch and parse Bing SERP (limit to 3 results, uses proxy)
-def fetch_bing_serp(query, limit=3, retries=3):
-    url = f"https://www.bing.com/search?q={query}"
+# Function to fetch and parse Google SERP (limit to 3 results, uses proxy)
+def fetch_google_serp(query, limit=3, retries=3):
+    url = f"https://www.google.com/search?q={query}"
     proxies = {
         "http": PROXY_URL,
         "https": PROXY_URL,
     }
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    
     for attempt in range(retries):
         try:
             session = requests.Session()
             session.cookies.clear()
-            response = session.get(url, proxies=proxies, headers=headers)
-            
-            # Check for CAPTCHA or error pages
-            if "https://www.bing.com/turing/captcha/challenge" in response.text:
-                return f"Error: CAPTCHA encountered for '{query}'."
-            
+            response = session.get(url, proxies=proxies)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
-                
-                # Primary selector: Target organic results with specific structure
-                organic_results = soup.select('li:has(h2 > a):has(div.b_caption), li:has(h2 > a):has(div.snippet)')[:limit]
-                
-                # Fallback selector: If no results, use broader selector
-                if not organic_results:
-                    organic_results = soup.select('li.b_algo')[:limit]
-                
-                for result in organic_results:
-                    # Extract title (h2 > a)
-                    title_element = result.select_one('h2 > a')
-                    title = title_element.get_text(strip=True) if title_element else "No Title Found"
-                    
-                    # Extract description (p within .b_caption or .snippet)
-                    description_element = (
-                        result.select_one('.b_caption p') or
-                        result.select_one('.snippet p')
-                    )
-                    description = description_element.get_text(strip=True) if description_element else ""
-                    
-                    # Append the result to the list
+                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
+                    if "ads" in result.get("class", []):
+                        continue
+                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
+                    title = title_element.get_text().strip() if title_element else "No Title Found"
+                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
+                                         result.find('div', class_='v9i61e') or \
+                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
+                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
+                    description = description_element.get_text().strip() if description_element else "No Description Found"
                     results.append({
                         "title": title,
                         "description": description
                     })
-                
-                # Handle cases where fewer than 3 results are found
-                if len(results) < limit:
-                    print(f"Warning: Only {len(results)} organic results found for query: {query}.")
-                
                 return results
             elif response.status_code == 429:
                 if attempt < retries - 1:
@@ -220,7 +195,7 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords
 def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
     serp_results = {}
     with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
-        futures = {executor.submit(fetch_bing_serp, keyword): keyword for keyword in keywords}
+        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
             try:
@@ -304,7 +279,7 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
         return None
 
 # Streamlit UI
-st.title("Bing Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
+st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
 
 # Initialize session state to store keywords and SERP results
 if "all_keywords" not in st.session_state:
