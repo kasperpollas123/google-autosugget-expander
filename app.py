@@ -8,7 +8,6 @@ import nltk
 from nltk.corpus import wordnet
 from difflib import SequenceMatcher
 import os
-import string  # For alphabet letters
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
@@ -68,16 +67,6 @@ def calculate_relevance(keyword, seed_keyword):
 def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
 
-# Function to append alphabet letters to keywords
-def append_alphabet(keywords):
-    alphabet = list(string.ascii_lowercase)  # a, b, c, ..., z
-    expanded_keywords = set()
-    for keyword in keywords:
-        for letter in alphabet:
-            expanded_keywords.add(f"{keyword} {letter}")
-            expanded_keywords.add(f"{letter} {keyword}")
-    return list(expanded_keywords)
-
 # Function to generate expanded keyword variations
 def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Fetch Level 1 autosuggest keywords
@@ -95,9 +84,6 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     all_keywords.add(seed_keyword)
     all_keywords.update(filtered_keywords)
     all_keywords.update(relevant_synonyms)
-
-    # Append alphabet letters to each keyword
-    all_keywords = append_alphabet(all_keywords)
 
     # Universal modifiers (smaller set for better relevance)
     universal_modifiers = [
