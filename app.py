@@ -8,10 +8,10 @@ from google.api_core import retry
 import google.generativeai as genai
 
 # Set up logging for debugging
-logging.basicConfig(level=logging.DEBUG)  # Set to DEBUG for detailed logs
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Oxylabs proxy endpoint
+# Oxylabs proxy credentials
 PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
 PROXY_PASS = "Snaksnak12345+"
 PROXY_HOST = "pr.oxylabs.io"
@@ -22,10 +22,10 @@ PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize Gemini model (Updated to use Gemini 1.5 Flash)
+# Initialize Gemini model
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Custom headers to mimic a real browser
+# Custom headers
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
@@ -48,12 +48,14 @@ async def get_autosuggest(query, session):
     try:
         async with session.get(url, params=params, headers=HEADERS, proxy=PROXY_URL, timeout=10) as response:
             response.raise_for_status()
-            data = await response.text()  # Log raw response data
+            data = await response.text()
             logger.debug(f"Raw response for '{query}': {data}")
-            json_data = await response.json()  # Parse JSON response
+            # Parse the response, adjust parsing if necessary
+            # Assuming it's JSON, but may need adjustment
+            json_data = await response.json()
             logger.debug(f"Parsed JSON response for '{query}': {json_data}")
             if isinstance(json_data, list) and len(json_data) > 1:
-                return json_data[1]  # Return the list of suggestions
+                return json_data[1]
             else:
                 logger.error(f"Unexpected response format for '{query}': {json_data}")
                 return []
@@ -72,7 +74,7 @@ def generate_expanded_keywords(seed_keyword):
 
 # Function to fetch keywords concurrently using asyncio
 async def fetch_keywords_concurrently(queries):
-    semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
+    semaphore = asyncio.Semaphore(20)
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         tasks = []
         for query in queries:
@@ -91,17 +93,13 @@ async def fetch_google_serp(query, session, limit=5):
         async with session.get(url, headers=HEADERS, proxy=PROXY_URL, timeout=10) as response:
             if response.status == 200:
                 html = await response.text()
-                soup = BeautifulSoup(html, 'lxml')
+                soup = BeautifulSoup(html, 'html.parser')
                 results = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
-                    if "ads" in result.get("class", []):
-                        continue
-                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
+                # Update selectors based on current SERP structure
+                for result in soup.find_all('div', class_='tF2Cxc')[:limit]:
+                    title_element = result.find('h3')
                     title = title_element.get_text().strip() if title_element else "No Title Found"
-                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
-                                         result.find('div', class_='v9i61e') or \
-                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
-                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
+                    description_element = result.find('span', class_='aCOpRe')
                     description = description_element.get_text().strip() if description_element else "No Description Found"
                     results.append({
                         "title": title,
@@ -118,12 +116,13 @@ async def fetch_google_serp(query, session, limit=5):
 
 # Function to fetch SERP results concurrently using asyncio
 async def fetch_serp_results_concurrently(keywords):
-    semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
+    semaphore = asyncio.Semaphore(20)
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         tasks = []
         for keyword in keywords:
-            task = asyncio.create_task(fetch_google_serp(keyword, session))
-            tasks.append(task)
+            async with semaphore:
+                task = asyncio.create_task(fetch_google_serp(keyword, session))
+                tasks.append(task)
         results = await asyncio.gather(*tasks, return_exceptions=True)
         logger.debug(f"Fetched {len(results)} SERP results (including errors)")
         return dict(zip(keywords, results))
@@ -131,55 +130,8 @@ async def fetch_serp_results_concurrently(keywords):
 # Function to analyze keywords with Gemini
 def analyze_keywords_with_gemini(keywords, serp_results):
     prompt = """
-    Please analyse the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. You may use the same keyword more than once in different themes but only once in each theme. The themes should have a catchy and inspiring headline and underneath the headline should simply be the keywords that are grouped together. For each group please remove and omit keywords that are too similar to other keywords and basically mean the same thing and reflect the same intent like for example 'my cat peeing everywhere' and 'cat is peeing everywhere'. You are not allowed to make up keywords that are not on the list i give you. Please limit each group to a maximum of 20 keywords. If there are any keywords that stick out as weird for example asking for the keyword in a specific language or if they just stick out to much compared to the overall intent of most of the keywords, then please remove them.
-
-    The final output should look EXACTLY like this:
-
-    Finding Local Plumbing Professionals
-    - r plumbing company
-    - j plumbing chicago
-    - z plumbers livonia
-    - r plumber llc
-    - r plumbing
-    - j.p. plumbing
-    - z plumbing and heating
-    - r plumbing llc reviews
-
-    Generating Plumbing Leads
-    - plumbing lead generation agency fatrank
-    - plumber lead generation
-    - how to get plumbing leads
-    - plumbing lead generation james dooley
-    - plumbing lead generation services
-    - plumbing leads near me
-    - plumbing leads for plumbers
-    - plumbing lead generation services fatrank
-    - plumbing lead generation company james dooley
-    - plumbing lead generation
-
-    Understanding Lead Pipes in Plumbing
-    - lead plumbing pipe
-    - plumbing lead
-    - plumbing lead joint
-    - lead plumbing
-    - plumbing lead pipes
-    - lead plumbing history
-    - led plumbing
-    - is lead still used in plumbing
-    - how much to replace lead plumbing
-    - who is responsible for replacing lead water pipes
-
-    Plumbing Tools and Equipment
-    - plumbing lead tools
-    - plumbing lead melting pot
-
-    Plumbing Job Information
-    - lead plumber salary
-    - lead plumber job description
-
-    Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format. The format must be EXACTLY as shown above, with no deviations.
+    [Your prompt here]
     """
-
     chat_input = "Here is the list of keywords and their SERP results:\n"
     for keyword, results in serp_results.items():
         if isinstance(results, list):
@@ -207,7 +159,7 @@ def analyze_keywords_with_gemini(keywords, serp_results):
         response = call_gemini()
         return response.text
     except Exception as e:
-        st.error(f"Error calling Gemini API: {e}")
+        logger.error(f"Error calling Gemini API: {e}")
         return None
 
 # Streamlit UI
@@ -228,47 +180,48 @@ if query:
     expanded_keywords = generate_expanded_keywords(query)
 
     # Fetch autosuggest keywords concurrently
-    with st.spinner("Fetching autosuggest keywords concurrently..."):
-        async def fetch_all_keywords():
-            return await fetch_keywords_concurrently([query] + expanded_keywords)
+    if st.button("Fetch Keywords"):
+        with st.spinner("Fetching autosuggest keywords concurrently..."):
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            results = loop.run_until_complete(fetch_keywords_concurrently([query] + expanded_keywords))
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        results = loop.run_until_complete(fetch_all_keywords())
+            valid_keywords = []
+            for result in results:
+                if isinstance(result, list):
+                    valid_keywords.extend(result)
+                elif isinstance(result, Exception):
+                    logger.error(f"Error in fetching keywords: {result}")
 
-        # Filter out exceptions and ensure only valid lists are processed
-        valid_keywords = []
-        for result in results:
-            if isinstance(result, list):  # Only process valid results
-                valid_keywords.extend(result)
-            elif isinstance(result, Exception):  # Log errors
-                logger.error(f"Error in fetching keywords: {result}")
-
-        # Update session state with valid keywords
-        st.session_state.all_keywords.update(valid_keywords)
-        st.success(f"Fetched {len(valid_keywords)} keywords.")
+            st.session_state.all_keywords.update(valid_keywords)
+            st.success(f"Fetched {len(valid_keywords)} keywords.")
 
     # Fetch SERP results concurrently
     if st.session_state.all_keywords:
-        with st.spinner("Fetching SERP results concurrently..."):
-            async def fetch_all_serp_results():
-                return await fetch_serp_results_concurrently(st.session_state.all_keywords)
-
-            serp_results = loop.run_until_complete(fetch_all_serp_results())
-            st.session_state.serp_results = serp_results
-            st.success(f"Fetched SERP results for {len(serp_results)} keywords.")
+        if st.button("Fetch SERP Results"):
+            with st.spinner("Fetching SERP results concurrently..."):
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                serp_results = loop.run_until_complete(fetch_serp_results_concurrently(st.session_state.all_keywords))
+                st.session_state.serp_results = serp_results
+                st.success(f"Fetched SERP results for {len(serp_results)} keywords.")
 
         # Analyze keywords with Gemini
         if st.session_state.serp_results:
-            with st.spinner("Analyzing keywords with Gemini..."):
-                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
-
-            # Display Gemini output
-            if st.session_state.gemini_output:
-                st.subheader("Keyword Themes and Groups")
-                st.markdown(st.session_state.gemini_output)
-            else:
-                st.write("No valid SERP results found for analysis.")
+            if st.button("Analyze with Gemini"):
+                with st.spinner("Analyzing keywords with Gemini..."):
+                    st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
+                    if st.session_state.gemini_output:
+                        st.subheader("Keyword Themes and Groups")
+                        st.markdown(st.session_state.gemini_output)
+                    else:
+                        st.write("No valid SERP results found for analysis.")
         else:
             st.write("No SERP results found.")
     else:
