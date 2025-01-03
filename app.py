@@ -134,11 +134,11 @@ def generate_expanded_keywords(seed_keyword):
                 all_keywords.add(f"{modifier} {keyword}")
                 all_keywords.add(f"{keyword} {modifier}")
 
-        # Append each letter of the alphabet to all keywords
-        for letter in string.ascii_lowercase:
-            for keyword in list(all_keywords):
-                all_keywords.add(f"{keyword} {letter}")
-                all_keywords.add(f"{letter} {keyword}")
+        # Comment out the alphabet appending
+        # for letter in string.ascii_lowercase:
+        #     for keyword in list(all_keywords):
+        #         all_keywords.add(f"{keyword} {letter}")
+        #         all_keywords.add(f"{letter} {keyword}")
 
         return list(all_keywords)
     except Exception as e:
