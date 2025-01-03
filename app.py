@@ -9,9 +9,9 @@ from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
 
-# Oxylabs proxy endpoint for kasperpollas12345_Lyt6m-cc-us
-PROXY_USER = "kasperpollas12345_Lyt6m-cc-us"
-PROXY_PASS = "Snaksnak12345+"
+# Oxylabs proxy endpoint for kasperpollasletsgo123-cc-us
+PROXY_USER = "kasperpollasletsgo123-cc-us"
+PROXY_PASS = "Akkkk11jrk34j+"
 PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
