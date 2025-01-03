@@ -96,6 +96,9 @@ def generate_level2_keywords(level1_keywords, progress_bar, status_text):
                 keywords = future.result()
                 if keywords:
                     all_keywords.update(keywords)
+                    # Log Level 2 keywords
+                    with st.expander(f"Level 2 Keywords for '{level1_keywords[i-1]}'"):
+                        st.write(keywords)
                 progress_value = i / len(level1_keywords)
                 progress_bar.progress(min(progress_value, 1.0))
                 status_text.text(f"Fetching Level 2 keywords: {i}/{len(level1_keywords)} completed")
@@ -181,11 +184,17 @@ if query:
         initial_keywords = get_autosuggest(query)
         if initial_keywords:
             st.session_state.all_keywords.update(initial_keywords)
+            # Log Level 1 keywords
+            with st.expander("Level 1 Keywords (Initial Autosuggestions)"):
+                st.write(initial_keywords)
         progress_bar.progress(0.2)
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations (Level 1)
     expanded_keywords = generate_expanded_keywords(query)
+    # Log Level 1 keywords (with modifiers)
+    with st.expander("Level 1 Keywords (With Modifiers)"):
+        st.write(expanded_keywords)
 
     # Step 3: Fetch Level 2 keywords
     with st.spinner("Fetching Level 2 keywords..."):
