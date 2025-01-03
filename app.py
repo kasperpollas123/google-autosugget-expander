@@ -8,19 +8,21 @@ import google.generativeai as genai
 from google.api_core import retry
 import nltk
 from nltk.corpus import wordnet
+from difflib import SequenceMatcher
+import os
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
 
 # Oxylabs proxy endpoint
-PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
-PROXY_PASS = "Snaksnak12345+"
-PROXY_HOST = "pr.oxylabs.io"
-PROXY_PORT = "7777"
+PROXY_USER = os.getenv("PROXY_USER", "customer-kasperpollas12345_Lyt6m-cc-us")
+PROXY_PASS = os.getenv("PROXY_PASS", "Snaksnak12345+")
+PROXY_HOST = os.getenv("PROXY_HOST", "pr.oxylabs.io")
+PROXY_PORT = os.getenv("PROXY_PORT", "7777")
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 # Google Gemini API key
-GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y")
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Initialize Gemini model (Updated to use Gemini 1.5 Pro)
@@ -57,50 +59,50 @@ def get_synonyms(word):
             synonyms.add(lemma.name())
     return list(synonyms)
 
+# Function to calculate relevance score
+def calculate_relevance(keyword, seed_keyword):
+    seed_words = seed_keyword.lower().split()
+    keyword_words = keyword.lower().split()
+    return len(set(seed_words).intersection(keyword_words)) / len(seed_words)
+
+# Function to check if two keywords are too similar
+def is_similar(keyword1, keyword2, threshold=0.8):
+    return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
+
 # Function to generate expanded keyword variations
 def generate_expanded_keywords(seed_keyword):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
 
-    # Fetch Level 2 autosuggest keywords
-    level2_keywords = set()
-    for keyword in level1_keywords:
-        level2_keywords.update(get_autosuggest(keyword))
+    # Filter autosuggest keywords to include only those containing the seed keyword
+    filtered_keywords = [kw for kw in level1_keywords if seed_keyword.lower() in kw.lower()]
 
     # Fetch synonyms for the seed keyword
     synonyms = get_synonyms(seed_keyword)
+    relevant_synonyms = [syn for syn in synonyms if seed_keyword.lower() in syn.lower() or syn.lower() in seed_keyword.lower()]
 
     # Combine all keywords
     all_keywords = set()
     all_keywords.add(seed_keyword)
-    all_keywords.update(level1_keywords)
-    all_keywords.update(level2_keywords)
-    all_keywords.update(synonyms)
+    all_keywords.update(filtered_keywords)
+    all_keywords.update(relevant_synonyms)
 
     # Universal modifiers (smaller set for better relevance)
     universal_modifiers = [
-        # Question-based
         "how to", "why is", "what is", "where to",
-        # Intent-based
         "buy", "hire", "find", "near me",
-        # Quality-based
         "best", "affordable", "top",
-        # Time-based
         "emergency", "24/7",
-        # Location-based
         "near me", "local"
     ]
 
-    # Apply universal modifiers to the seed keyword, autosuggest keywords, and synonyms
+    # Apply universal modifiers to the seed keyword and filtered keywords
     for modifier in universal_modifiers:
         all_keywords.add(f"{modifier} {seed_keyword}")
         all_keywords.add(f"{seed_keyword} {modifier}")
-        for keyword in level1_keywords:
+        for keyword in filtered_keywords:
             all_keywords.add(f"{modifier} {keyword}")
             all_keywords.add(f"{keyword} {modifier}")
-        for synonym in synonyms:
-            all_keywords.add(f"{modifier} {synonym}")
-            all_keywords.add(f"{synonym} {modifier}")
 
     # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
     filtered_keywords = set()
@@ -108,12 +110,18 @@ def generate_expanded_keywords(seed_keyword):
         if seed_keyword.lower() in keyword.lower():
             filtered_keywords.add(keyword)
         else:
-            for synonym in synonyms:
+            for synonym in relevant_synonyms:
                 if synonym.lower() in keyword.lower():
                     filtered_keywords.add(keyword)
                     break
 
-    return list(filtered_keywords)
+    # Remove duplicate keywords
+    unique_keywords = []
+    for kw in filtered_keywords:
+        if not any(is_similar(kw, existing_kw) for existing_kw in unique_keywords):
+            unique_keywords.append(kw)
+
+    return unique_keywords
 
 # Function to fetch and parse Google SERP (limit to 3 results)
 def fetch_google_serp(query, limit=3, retries=3):
@@ -198,56 +206,23 @@ def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
     return serp_results
 
 # Function to analyze keywords with Gemini
-def analyze_keywords_with_gemini(keywords, serp_results):
-    # System instructions and chat input (same content)
-    prompt = """
-    Please analyse the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. You may use the same keyword more than once in different themes but only once in each theme. The themes should have a catchy and inspiring headline and underneath the headline should simply be the keywords that are grouped together. For each group please remove and omit keywords that are too similar to other keywords and basically mean the same thing and reflect the same intent like for example 'my cat peeing everywhere' and 'cat is peeing everywhere'. You are not allowed to make up keywords that are not on the list i give you. Please limit each group to a maximum of 20 keywords. If there are any keywords that stick out as weird for example asking for the keyword in a specific language or if they just stick out to much compared to the overall intent of most of the keywords, then please remove them.
+def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
+    # System instructions and chat input
+    prompt = f"""
+    Please analyze the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. 
+
+    **Rules:**
+    1. Only include keywords that are closely related to the seed keyword: '{seed_keyword}'.
+    2. Remove keywords that are too generic or unrelated.
+    3. Limit each group to a maximum of 10 keywords.
+    4. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
 
     The final output should look EXACTLY like this:
 
-    Finding Local Plumbing Professionals
-    - r plumbing company
-    - j plumbing chicago
-    - z plumbers livonia
-    - r plumber llc
-    - r plumbing
-    - j.p. plumbing
-    - z plumbing and heating
-    - r plumbing llc reviews
-
-    Generating Plumbing Leads
-    - plumbing lead generation agency fatrank
-    - plumber lead generation
-    - how to get plumbing leads
-    - plumbing lead generation james dooley
-    - plumbing lead generation services
-    - plumbing leads near me
-    - plumbing leads for plumbers
-    - plumbing lead generation services fatrank
-    - plumbing lead generation company james dooley
-    - plumbing lead generation
-
-    Understanding Lead Pipes in Plumbing
-    - lead plumbing pipe
-    - plumbing lead
-    - plumbing lead joint
-    - lead plumbing
-    - plumbing lead pipes
-    - lead plumbing history
-    - led plumbing
-    - is lead still used in plumbing
-    - how much to replace lead plumbing
-    - who is responsible for replacing lead water pipes
-
-    Plumbing Tools and Equipment
-    - plumbing lead tools
-    - plumbing lead melting pot
-
-    Plumbing Job Information
-    - lead plumber salary
-    - lead plumber job description
-
-    Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format. The format must be EXACTLY as shown above, with no deviations.
+    Theme Name
+    - keyword 1
+    - keyword 2
+    - keyword 3
     """
 
     # Prepare the chat input for Gemini
@@ -341,7 +316,7 @@ if query:
         # Step 5: Analyze keywords with Gemini
         if st.session_state.serp_results:
             with st.spinner("Analyzing keywords with Gemini..."):
-                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
+                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results, query)
                 progress_bar.progress(1.0)
                 status_text.text("Analysis complete!")
 
