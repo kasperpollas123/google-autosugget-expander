@@ -55,7 +55,7 @@ def generate_expanded_keywords(seed_keyword):
     return expanded_keywords
 
 # Function to fetch keywords concurrently using multi-threading
-def fetch_keywords_concurrently(queries):
+def fetch_keywords_concurrently(queries, progress_bar, status_text):
     all_keywords = set()
     with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
@@ -120,7 +120,7 @@ def fetch_google_serp(query, limit=5, retries=3):
     return f"Error: Max retries reached for '{query}'."
 
 # Function to fetch SERP results concurrently
-def fetch_serp_results_concurrently(keywords):
+def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
     serp_results = {}
     with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
         futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
@@ -130,8 +130,8 @@ def fetch_serp_results_concurrently(keywords):
                 result = future.result()
                 serp_results[keyword] = result
                 progress_value = i / len(keywords)
-                serp_progress_bar.progress(min(progress_value, 1.0))
-                serp_status_text.text(f"SERP Progress: {i}/{len(keywords)} keywords completed")
+                progress_bar.progress(min(progress_value, 1.0))
+                status_text.text(f"SERP Progress: {i}/{len(keywords)} keywords completed")
             except Exception as e:
                 st.error(f"Error fetching SERP results for '{keyword}': {e}")
     return serp_results
@@ -245,48 +245,52 @@ with st.sidebar:
 
 # Main content
 if query:
-    # Initialize variables
-    total_variations = 52  # 26 letters * 2 (beginning and end)
+    # Initialize progress bar and status text
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Fetch initial autosuggest keywords
+    # Step 1: Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
         initial_keywords = get_autosuggest(query)
         if initial_keywords:
             st.session_state.all_keywords.update(initial_keywords)
-        progress_value = 1 / total_variations
-        progress_bar.progress(min(progress_value, 1.0))
-        status_text.text(f"Progress: 1/{total_variations} variations completed")
+        progress_bar.progress(0.2)
+        status_text.text("Step 1/4: Fetched initial autosuggest keywords.")
 
-    # Generate expanded keyword variations
+    # Step 2: Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
 
-    # Fetch autosuggest keywords concurrently
+    # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
-        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords))
+        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text))
+        progress_bar.progress(0.5)
+        status_text.text("Step 2/4: Fetched expanded autosuggest keywords.")
 
-    # Fetch SERP results for each keyword concurrently
+    # Step 4: Fetch SERP results for each keyword concurrently
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        # Initialize SERP progress bar and status text
-        serp_progress_bar = st.progress(0)
-        serp_status_text = st.empty()
-
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
-            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords)
+            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
+            progress_bar.progress(0.8)
+            status_text.text("Step 3/4: Fetched SERP results for all keywords.")
 
-        # Analyze keywords with Gemini
+        # Step 5: Analyze keywords with Gemini
         if st.session_state.serp_results:
             with st.spinner("Analyzing keywords with Gemini..."):
                 st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
+                progress_bar.progress(1.0)
+                status_text.text("Step 4/4: Analysis complete!")
 
-        # Display Gemini output
+        # Display Gemini output as collapsible cards
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
-            st.markdown(st.session_state.gemini_output)
+            for theme in st.session_state.gemini_output.split("\n\n"):
+                if theme.strip():
+                    theme_name = theme.split("\n")[0]
+                    with st.expander(theme_name):
+                        st.markdown("\n".join(theme.split("\n")[1:]))
     else:
         st.write("No keywords found.")
 else:
