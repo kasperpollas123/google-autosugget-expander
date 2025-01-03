@@ -10,7 +10,7 @@ from nltk.stem import WordNetLemmatizer
 from difflib import SequenceMatcher
 from nltk.corpus import stopwords
 
-# Download WordNet and stopwords data (only needed once)
+# Download NLTK data
 import nltk
 nltk.download('wordnet')
 nltk.download('omw-1.4')
@@ -29,10 +29,17 @@ PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 # Google Gemini API key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y")
-genai.configure(api_key=GEMINI_API_KEY)
+if not GEMINI_API_KEY:
+    st.error("Gemini API key is missing. Please set the GEMINI_API_KEY environment variable.")
+    st.stop()
 
-# Initialize Gemini model (Switched to Gemini 1.5 Flash)
-gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+try:
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    st.write("Gemini model initialized successfully.")
+except Exception as e:
+    st.error(f"Error initializing Gemini model: {e}")
+    st.stop()
 
 # Function to fetch Google autosuggest keywords with retries (uses proxy)
 def get_autosuggest(query, max_retries=3):
@@ -41,16 +48,22 @@ def get_autosuggest(query, max_retries=3):
         "q": query,
         "client": "chrome",
     }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
     proxies = {
         "http": PROXY_URL,
         "https": PROXY_URL,
     }
     for attempt in range(max_retries):
         try:
-            response = requests.get(url, params=params, proxies=proxies, timeout=10)
+            st.write(f"Attempt {attempt + 1} to fetch autosuggest keywords for '{query}'...")
+            response = requests.get(url, params=params, headers=headers, proxies=proxies, timeout=10)
             response.raise_for_status()
+            st.write(f"Successfully fetched autosuggest keywords for '{query}'.")
             return response.json()[1]
         except requests.exceptions.RequestException as e:
+            st.write(f"Attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(1)
             else:
@@ -62,30 +75,30 @@ def get_autosuggest(query, max_retries=3):
 def is_similar(word1, word2, threshold=0.8):
     return SequenceMatcher(None, word1, word2).ratio() >= threshold
 
-# Function to check if a keyword is relevant to the seed keyword
-def is_relevant(keyword, seed_keyword):
-    try:
-        # Convert to lowercase for case-insensitive comparison
-        keyword_lower = keyword.lower()
-        seed_lower = seed_keyword.lower()
+# Comment out the is_relevant function
+# def is_relevant(keyword, seed_keyword):
+#     try:
+#         # Convert to lowercase for case-insensitive comparison
+#         keyword_lower = keyword.lower()
+#         seed_lower = seed_keyword.lower()
 
-        # Lemmatize both the keyword and seed keyword, and remove stopwords
-        keyword_words = [lemmatizer.lemmatize(word) for word in keyword_lower.split() if word not in stop_words]
-        seed_words = [lemmatizer.lemmatize(word) for word in seed_lower.split() if word not in stop_words]
+#         # Lemmatize both the keyword and seed keyword, and remove stopwords
+#         keyword_words = [lemmatizer.lemmatize(word) for word in keyword_lower.split() if word not in stop_words]
+#         seed_words = [lemmatizer.lemmatize(word) for word in seed_lower.split() if word not in stop_words]
 
-        # Count the number of matching words
-        matching_words = 0
-        for kw_word in keyword_words:
-            for seed_word in seed_words:
-                if is_similar(kw_word, seed_word):
-                    matching_words += 1
-                    break  # Count each keyword word only once
+#         # Count the number of matching words
+#         matching_words = 0
+#         for kw_word in keyword_words:
+#             for seed_word in seed_words:
+#                 if is_similar(kw_word, seed_word):
+#                     matching_words += 1
+#                     break  # Count each keyword word only once
 
-        # Check if the keyword contains at least n-1 words from the seed keyword
-        return matching_words >= (len(seed_words) - 1)
-    except Exception as e:
-        st.error(f"Error in relevance check for '{keyword}': {e}")
-        return False
+#         # Check if the keyword contains at least n-1 words from the seed keyword
+#         return matching_words >= (len(seed_words) - 1)
+#     except Exception as e:
+#         st.error(f"Error in relevance check for '{keyword}': {e}")
+#         return False
 
 # Function to generate expanded keyword variations with one level of recursion
 def generate_expanded_keywords(seed_keyword):
@@ -102,9 +115,9 @@ def generate_expanded_keywords(seed_keyword):
         for keyword in level1_keywords:
             level2_keywords = get_autosuggest(keyword)
             if level2_keywords:
-                # Filter Level 2 keywords for relevance
-                filtered_level2_keywords = [kw for kw in level2_keywords if is_relevant(kw, seed_keyword)]
-                all_keywords.update(filtered_level2_keywords)
+                # Comment out the relevance filter
+                # filtered_level2_keywords = [kw for kw in level2_keywords if is_relevant(kw, seed_keyword)]
+                all_keywords.update(level2_keywords)  # Use unfiltered Level 2 keywords
 
         # Universal modifiers (smaller set for better relevance)
         universal_modifiers = [
