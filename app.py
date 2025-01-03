@@ -9,9 +9,9 @@ from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
 
-# Oxylabs proxy endpoint for kasperpollasletsgo123-cc-us
-PROXY_USER = "kasperpollasletsgo123-cc-us"
-PROXY_PASS = "Akkkk11jrk34j+"
+# Oxylabs proxy endpoint
+PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
+PROXY_PASS = "Snaksnak12345+"
 PROXY_HOST = "pr.oxylabs.io"
 PROXY_PORT = "7777"
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
@@ -20,7 +20,7 @@ PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize Gemini model
+# Initialize Gemini model (Updated to use Gemini 1.5 Flash)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Function to fetch Google autosuggest keywords with retries
@@ -36,7 +36,7 @@ def get_autosuggest(query, max_retries=3):
     }
     for attempt in range(max_retries):
         try:
-            response = requests.get(url, params=params, proxies=proxies, timeout=30)
+            response = requests.get(url, params=params, proxies=proxies)
             response.raise_for_status()
             return response.json()[1]
         except requests.exceptions.RequestException as e:
@@ -82,7 +82,7 @@ def fetch_google_serp(query, limit=5, retries=3):
             }
             session = requests.Session()
             session.cookies.clear()
-            response = session.get(url, proxies=proxies, timeout=30)
+            response = session.get(url, proxies=proxies)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
@@ -122,7 +122,7 @@ def fetch_google_serp(query, limit=5, retries=3):
 # Function to fetch SERP results concurrently
 def fetch_serp_results_concurrently(keywords):
     serp_results = {}
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:  # Adjust max_workers as needed
         futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
@@ -138,6 +138,7 @@ def fetch_serp_results_concurrently(keywords):
 
 # Function to analyze keywords with Gemini
 def analyze_keywords_with_gemini(keywords, serp_results):
+    # System instructions and chat input (same content)
     prompt = """
     Please analyse the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. You may use the same keyword more than once in different themes but only once in each theme. The themes should have a catchy and inspiring headline and underneath the headline should simply be the keywords that are grouped together. For each group please remove and omit keywords that are too similar to other keywords and basically mean the same thing and reflect the same intent like for example 'my cat peeing everywhere' and 'cat is peeing everywhere'. You are not allowed to make up keywords that are not on the list i give you. Please limit each group to a maximum of 20 keywords. If there are any keywords that stick out as weird for example asking for the keyword in a specific language or if they just stick out to much compared to the overall intent of most of the keywords, then please remove them.
 
@@ -188,26 +189,29 @@ def analyze_keywords_with_gemini(keywords, serp_results):
     Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format. The format must be EXACTLY as shown above, with no deviations.
     """
 
+    # Prepare the chat input for Gemini
     chat_input = "Here is the list of keywords and their SERP results:\n"
     for keyword, results in serp_results.items():
-        if isinstance(results, list):
+        if isinstance(results, list):  # Only process valid SERP results
             chat_input += f"Keyword: {keyword}\n"
             for i, result in enumerate(results, start=1):
-                if isinstance(result, dict) and "title" in result and "description" in result:
+                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
                     chat_input += f"  Result {i}:\n"
                     chat_input += f"    Title: {result['title']}\n"
                     chat_input += f"    Description: {result['description']}\n"
             chat_input += "\n"
 
+    # Configure Gemini generation settings
     generation_config = {
-        "temperature": 1,
-        "max_output_tokens": 10000,
+        "temperature": 1,  # Higher temperature for more creative outputs
+        "max_output_tokens": 10000,  # Increase output token limit to 10,000
     }
 
+    # Retry logic for API calls
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
-            contents=[prompt, prompt + "\n" + chat_input],
+            contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
             generation_config=generation_config,
         )
 
@@ -232,10 +236,12 @@ if "gemini_output" not in st.session_state:
 query = st.text_input("Enter a seed keyword:")
 
 if query:
-    total_variations = 52
+    # Initialize variables
+    total_variations = 52  # 26 letters * 2 (beginning and end)
     progress_bar = st.progress(0)
     status_text = st.empty()
 
+    # Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
         initial_keywords = get_autosuggest(query)
         if initial_keywords:
@@ -244,25 +250,31 @@ if query:
         progress_bar.progress(min(progress_value, 1.0))
         status_text.text(f"Progress: 1/{total_variations} variations completed")
 
+    # Generate expanded keyword variations
     expanded_keywords = generate_expanded_keywords(query)
 
+    # Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
         st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords))
 
+    # Fetch SERP results for each keyword concurrently
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
+        # Initialize SERP progress bar and status text
         serp_progress_bar = st.progress(0)
         serp_status_text = st.empty()
 
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
             st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords)
 
+        # Analyze keywords with Gemini
         if st.session_state.serp_results:
             with st.spinner("Analyzing keywords with Gemini..."):
                 st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
 
+        # Display Gemini output
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
             st.markdown(st.session_state.gemini_output)
