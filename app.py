@@ -130,9 +130,10 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
     - keyword 2
     - keyword 3
 
-    Here is the list of keywords:
+    Here is the list of keywords (one per line):
     """
-    prompt += "\n".join(keywords)
+    # Format the keyword list with clear separators (one per line)
+    prompt += "\n".join([f"- {kw}" for kw in keywords])
 
     # Log the full prompt sent to Gemini
     with st.expander("Full Prompt Sent to Gemini"):
@@ -156,6 +157,9 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
 
     try:
         response = call_gemini()
+        # Log the raw response from Gemini
+        with st.expander("Raw Response from Gemini"):
+            st.write(response.text)
         return response.text
     except Exception as e:
         st.error(f"Error calling Gemini API: {e}")
