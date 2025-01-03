@@ -198,6 +198,20 @@ def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
                 st.error(f"Error fetching SERP results for '{keyword}': {e}")
     return serp_results
 
+# Function to format SERP data for logging
+def format_serp_data_for_logging(serp_results):
+    log_output = ""
+    for keyword, results in serp_results.items():
+        if isinstance(results, list):  # Only process valid SERP results
+            log_output += f"Keyword: {keyword}\n"
+            for i, result in enumerate(results, start=1):
+                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
+                    log_output += f"  Result {i}:\n"
+                    log_output += f"    Title: {result['title']}\n"
+                    log_output += f"    Description: {result['description']}\n"
+            log_output += "\n"
+    return log_output
+
 # Function to analyze keywords with Gemini
 def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
     # System instructions and chat input
@@ -302,6 +316,11 @@ if query:
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
+
+        # Log SERP data in a collapsible box
+        with st.expander("View Scraped SERP Data (Sample)"):
+            serp_log = format_serp_data_for_logging(st.session_state.serp_results)
+            st.text_area("SERP Data Log", value=serp_log, height=300)
 
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
             st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
