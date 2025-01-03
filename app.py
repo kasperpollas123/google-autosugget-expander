@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
-from google.api_core import retry
+from google.api_core import retry, timeout
 
 # Oxylabs proxy endpoint
 PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
@@ -207,12 +207,16 @@ def analyze_keywords_with_gemini(keywords, serp_results):
         "max_output_tokens": 10000,  # Increase output token limit to 10,000
     }
 
+    # Increase timeout for API requests
+    custom_timeout = timeout.Timeout(300)  # 300 seconds (5 minutes) timeout
+
     # Retry logic for API calls
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
             contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
             generation_config=generation_config,
+            timeout=custom_timeout,  # Use custom timeout
         )
 
     try:
