@@ -102,9 +102,20 @@ def generate_expanded_keywords(seed_keyword):
     # Combine all keywords
     all_keywords.update(expanded_keywords)
 
+    # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
+    filtered_keywords = set()
+    for keyword in all_keywords:
+        if seed_keyword.lower() in keyword.lower():
+            filtered_keywords.add(keyword)
+        else:
+            for synonym in relevant_synonyms:
+                if synonym.lower() in keyword.lower():
+                    filtered_keywords.add(keyword)
+                    break
+
     # Remove duplicate keywords
     unique_keywords = []
-    for kw in all_keywords:
+    for kw in filtered_keywords:
         if not any(is_similar(kw, existing_kw) for existing_kw in unique_keywords):
             unique_keywords.append(kw)
 
