@@ -142,17 +142,12 @@ def fetch_google_serp(query, limit=3, retries=3):
                 for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
                     if "ads" in result.get("class", []):
                         continue
-                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
-                    title = title_element.get_text().strip() if title_element else "No Title Found"
-                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
-                                         result.find('div', class_='v9i61e') or \
-                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
-                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
-                    description = description_element.get_text().strip() if description_element else "No Description Found"
-                    results.append({
-                        "title": title,
-                        "description": description
-                    })
+                    link_element = result.find('a', href=True)
+                    if link_element:
+                        link = link_element['href']
+                        if link.startswith('/url?q='):
+                            link = link[7:].split('&')[0]  # Extract the actual URL
+                        results.append(link)
                 return results
             elif response.status_code == 429:
                 if attempt < retries - 1:
@@ -215,10 +210,8 @@ def format_serp_data_for_logging(serp_results):
         if isinstance(results, list):  # Only process valid SERP results
             log_output += f"Keyword: {keyword}\n"
             for i, result in enumerate(results, start=1):
-                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
-                    log_output += f"  Result {i}:\n"
-                    log_output += f"    Title: {result['title']}\n"
-                    log_output += f"    Description: {result['description']}\n"
+                if isinstance(result, str):  # Ensure result is a valid link
+                    log_output += f"  Result {i}: {result}\n"
             log_output += "\n"
     return log_output
 
@@ -250,10 +243,8 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
         if isinstance(results, list):  # Only process valid SERP results
             chat_input += f"Keyword: {keyword}\n"
             for i, result in enumerate(results, start=1):
-                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
-                    chat_input += f"  Result {i}:\n"
-                    chat_input += f"    Title: {result['title']}\n"
-                    chat_input += f"    Description: {result['description']}\n"
+                if isinstance(result, str):  # Ensure result is a valid link
+                    chat_input += f"  Result {i}: {result}\n"
             chat_input += "\n"
 
     # Configure Gemini generation settings
