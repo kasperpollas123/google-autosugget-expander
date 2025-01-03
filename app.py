@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from lxml import html  # Replaced BeautifulSoup with lxml
+from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
@@ -137,22 +137,18 @@ def fetch_google_serp(query, limit=3, retries=3):
             session.cookies.clear()
             response = session.get(url, proxies=proxies)
             if response.status_code == 200:
-                tree = html.fromstring(response.text)
+                soup = BeautifulSoup(response.text, 'lxml')
                 results = []
-                # Focus on organic results (divs with class that contains "yuRUbf")
-                for result in tree.xpath('//div[contains(@class, "yuRUbf")]')[:limit]:
-                    # Skip YouTube results
-                    if result.xpath('.//span[contains(text(), "YouTube")]'):
+                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
+                    if "ads" in result.get("class", []):
                         continue
-                        
-                    # Extract title (prioritizing h3, then h2, then div elements)
-                    title_element = result.xpath('.//h3 | .//h2 | .//div[contains(@class, "BNeawe vvjwJb AP7Wnd")]')
-                    title = title_element[0].text_content().strip() if title_element else "No Title Found"
-
-                    # Extract description (using general span/div with 'aCOpRe')
-                    description_element = result.xpath('.//span[contains(@class, "aCOpRe")] | .//div[contains(@class, "aCOpRe")] | .//span[contains(@class, "IsZvec")]')
-                    description = description_element[0].text_content().strip() if description_element else "No Description Found"
-                    
+                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
+                    title = title_element.get_text().strip() if title_element else "No Title Found"
+                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
+                                         result.find('div', class_='v9i61e') or \
+                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
+                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
+                    description = description_element.get_text().strip() if description_element else "No Description Found"
                     results.append({
                         "title": title,
                         "description": description
