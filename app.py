@@ -112,16 +112,16 @@ def generate_level2_keywords(level1_keywords, progress_bar, status_text):
 
 # Function to analyze keywords with Gemini (only keywords, no SERP data)
 def analyze_keywords_with_gemini(keywords, seed_keyword):
-    # Combine system instructions and chat input into a single prompt
-    prompt = f"""
-    Please analyze the intent for all of the keywords on this list. Then come up with different themes that keywords can be grouped under. 
+    # System message with strict instructions
+    system_message = """
+    You are a keyword analysis assistant. Your task is to analyze the intent of the provided keywords and group them into meaningful themes. Follow these rules strictly:
 
-    **Rules:**
-    1. Include keywords that are related or tangentially relevant to the seed keyword: '{seed_keyword}'.
-    2. Limit each group to a maximum of 20 keywords.
+    1. Include keywords that are related or tangentially relevant to the seed keyword.
+    2. Limit each group to a maximum of 20 keywords. If a group exceeds 20 keywords, split it into smaller groups with similar themes.
     3. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
     4. Ensure all keywords are grouped into relevant themes. If necessary, create an "Other" group for slightly less relevant but still useful keywords.
-    5. Make sure that all keywords from the list are included in a meaningful group. 
+    5. Make sure that all keywords from the list are included in a meaningful group. Do not omit any keywords.
+    6. Create enough unique group themes to accommodate all keywords. If the list is large, create additional themes as needed.
 
     The final output should look EXACTLY like this:
 
@@ -129,15 +129,17 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
     - keyword 1
     - keyword 2
     - keyword 3
-
-    Here is the list of keywords (one per line):
     """
-    # Format the keyword list with clear separators (one per line)
-    prompt += "\n".join([f"- {kw}" for kw in keywords])
+
+    # Chat input (the keyword list)
+    chat_input = f"""
+    Here is the list of keywords (one per line):
+    {"\n".join([f"- {kw}" for kw in keywords])}
+    """
 
     # Log the full prompt sent to Gemini
     with st.expander("Full Prompt Sent to Gemini"):
-        st.write(prompt)
+        st.write(system_message + "\n\n" + chat_input)
 
     # Configure Gemini generation settings
     generation_config = {
@@ -150,7 +152,7 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
-            contents=[prompt],  # Pass the combined prompt as a single input
+            contents=[system_message, chat_input],  # Pass system message and chat input separately
             generation_config=generation_config,
             request_options={"timeout": 600},  # 10-minute timeout
         )
