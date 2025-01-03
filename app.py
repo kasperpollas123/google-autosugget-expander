@@ -70,7 +70,7 @@ def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
 
 # Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword, goal, max_keywords=500):
+def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
 
@@ -87,19 +87,13 @@ def generate_expanded_keywords(seed_keyword, goal, max_keywords=500):
     all_keywords.update(filtered_keywords)
     all_keywords.update(relevant_synonyms)
 
-    # Universal modifiers (expanded set for more comprehensive results)
+    # Universal modifiers (smaller set for better relevance)
     universal_modifiers = [
-        "how to", "why is", "what is", "where to", "when to", "who is", "which is",
-        "buy", "hire", "find", "near me", "online", "cheap", "affordable", "best", "top", "local",
-        "emergency", "24/7", "services", "companies", "providers", "experts", "specialists",
-        "reviews", "ratings", "prices", "cost", "costs", "deals", "discounts", "offers",
-        "guide", "tips", "tricks", "advice", "recommendations", "solutions", "ideas",
-        "nearby", "close to me", "in my area", "in my city", "in my town", "in my state",
-        "for sale", "for rent", "for lease", "for hire", "for purchase", "for business",
-        "for home", "for office", "for commercial", "for residential", "for industrial",
-        "for beginners", "for professionals", "for experts", "for students", "for seniors",
-        "for kids", "for adults", "for families", "for couples", "for individuals",
-        "for small businesses", "for large businesses", "for startups", "for enterprises",
+        "how to", "why is", "what is", "where to",
+        "buy", "hire", "find", "near me",
+        "best", "affordable", "top",
+        "emergency", "24/7",
+        "near me", "local"
     ]
 
     # Apply universal modifiers to the seed keyword and filtered keywords
@@ -130,8 +124,8 @@ def generate_expanded_keywords(seed_keyword, goal, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch top 3 links from Google SERP (uses proxy)
-def fetch_serp_links(query, retries=3):
+# Function to fetch and parse Google SERP (limit to 3 results, uses proxy)
+def fetch_google_serp(query, limit=3, retries=3):
     url = f"https://www.google.com/search?q={query}"
     proxies = {
         "http": PROXY_URL,
@@ -144,12 +138,22 @@ def fetch_serp_links(query, retries=3):
             response = session.get(url, proxies=proxies)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
-                links = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:3]:  # Limit to top 3 results
-                    link_element = result.find('a', href=True)
-                    if link_element:
-                        links.append(link_element['href'])
-                return links
+                results = []
+                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
+                    if "ads" in result.get("class", []):
+                        continue
+                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
+                    title = title_element.get_text().strip() if title_element else "No Title Found"
+                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
+                                         result.find('div', class_='v9i61e') or \
+                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
+                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
+                    description = description_element.get_text().strip() if description_element else "No Description Found"
+                    results.append({
+                        "title": title,
+                        "description": description
+                    })
+                return results
             elif response.status_code == 429:
                 if attempt < retries - 1:
                     time.sleep(10)
@@ -168,42 +172,58 @@ def fetch_serp_links(query, retries=3):
             return f"An error occurred for '{query}': {e}"
     return f"Error: Max retries reached for '{query}'."
 
-# Function to scrape content from a link (without proxy)
-def scrape_page_content(url):
-    try:
-        response = requests.get(url, timeout=10)  # Direct request (no proxy)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'lxml')
-            # Extract relevant content (e.g., headings and paragraphs)
-            content = ""
-            for tag in soup.find_all(['h1', 'h2', 'h3', 'p']):  # Customize based on your needs
-                content += f"{tag.text}\n"
-            return content
-        else:
-            return f"Error: Unable to fetch content from '{url}'. Status code: {response.status_code}"
-    except Exception as e:
-        return f"An error occurred while scraping '{url}': {e}"
+# Function to fetch keywords concurrently using multi-threading
+def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
+    all_keywords = set()
+    with ThreadPoolExecutor(max_workers=500) as executor:
+        futures = {executor.submit(get_autosuggest, query): query for query in queries}
+        for i, future in enumerate(as_completed(futures), start=1):
+            try:
+                keywords = future.result()
+                if keywords:
+                    all_keywords.update(keywords)
+                progress_value = i / len(queries)
+                progress_bar.progress(min(progress_value, 1.0))
+                status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
+                if len(all_keywords) >= max_keywords:
+                    break  # Stop fetching once the maximum limit is reached
+            except Exception as e:
+                st.error(f"Error fetching keywords: {e}")
+    return list(all_keywords)[:max_keywords]
 
-# Function to fetch SERP links and scrape content for all keywords
-def fetch_serp_links_and_content(keywords):
-    serp_data = {}
-    for keyword in keywords:
-        # Fetch top 3 links for the keyword
-        links = fetch_serp_links(keyword)
-        if isinstance(links, list):  # Ensure links were fetched successfully
-            serp_data[keyword] = []
-            for link in links:
-                # Scrape content from the link
-                content = scrape_page_content(link)
-                if content and not content.startswith("Error"):  # Ensure content was scraped successfully
-                    serp_data[keyword].append({
-                        "link": link,
-                        "content": content
-                    })
-    return serp_data
+# Function to fetch SERP results concurrently (uses proxy)
+def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
+    serp_results = {}
+    with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
+        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
+        for i, future in enumerate(as_completed(futures), start=1):
+            keyword = futures[future]
+            try:
+                result = future.result()
+                serp_results[keyword] = result
+                progress_value = i / len(keywords)
+                progress_bar.progress(min(progress_value, 1.0))
+                status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
+            except Exception as e:
+                st.error(f"Error fetching SERP results for '{keyword}': {e}")
+    return serp_results
 
-# Function to analyze keywords with Gemini (with grounding)
-def analyze_keywords_with_gemini(keywords, serp_data, seed_keyword, goal):
+# Function to format SERP data for logging
+def format_serp_data_for_logging(serp_results):
+    log_output = ""
+    for keyword, results in serp_results.items():
+        if isinstance(results, list):  # Only process valid SERP results
+            log_output += f"Keyword: {keyword}\n"
+            for i, result in enumerate(results, start=1):
+                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
+                    log_output += f"  Result {i}:\n"
+                    log_output += f"    Title: {result['title']}\n"
+                    log_output += f"    Description: {result['description']}\n"
+            log_output += "\n"
+    return log_output
+
+# Function to analyze keywords with Gemini
+def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
     # System instructions and chat input
     prompt = f"""
     Please analyze the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. 
@@ -212,10 +232,9 @@ def analyze_keywords_with_gemini(keywords, serp_data, seed_keyword, goal):
     1. Only include keywords that are closely related to the seed keyword: '{seed_keyword}' (artificial intelligence).
     2. Remove keywords that are too generic, irrelevant, or unclear in intent.
     3. Consolidate similar keywords into a single representative keyword.
-    4. Limit each group to a maximum of 20 keywords (to ensure comprehensive results).
+    4. Limit each group to a maximum of 10 keywords.
     5. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
     6. Ensure all keywords are grouped into relevant themes. Do not create an "Other" group.
-    7. Focus on keywords that align with the following goal: {goal}.
 
     The final output should look EXACTLY like this:
 
@@ -227,26 +246,15 @@ def analyze_keywords_with_gemini(keywords, serp_data, seed_keyword, goal):
 
     # Prepare the chat input for Gemini
     chat_input = "Here is the list of keywords and their SERP results:\n"
-    for keyword, results in serp_data.items():
+    for keyword, results in serp_results.items():
         if isinstance(results, list):  # Only process valid SERP results
             chat_input += f"Keyword: {keyword}\n"
             for i, result in enumerate(results, start=1):
-                if isinstance(result, dict) and "link" in result and "content" in result:  # Ensure result is valid
+                if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
                     chat_input += f"  Result {i}:\n"
-                    chat_input += f"    Link: {result['link']}\n"
-                    chat_input += f"    Content: {result['content'][:500]}...\n"  # Show first 500 characters of content
+                    chat_input += f"    Title: {result['title']}\n"
+                    chat_input += f"    Description: {result['description']}\n"
             chat_input += "\n"
-
-    # Grounding: Add SERP data as grounding context
-    grounding_context = f"""
-    **Grounding Context (SERP Data):**
-    Below are the search engine results (SERP) for the keywords. Use this information to ground your analysis and ensure the themes are relevant and up-to-date.
-
-    {chat_input}
-    """
-
-    # Combine the prompt, grounding context, and chat input
-    full_input = [prompt, grounding_context]
 
     # Configure Gemini generation settings
     generation_config = {
@@ -258,7 +266,7 @@ def analyze_keywords_with_gemini(keywords, serp_data, seed_keyword, goal):
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
-            contents=full_input,  # Pass prompt and grounding context
+            contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
             generation_config=generation_config,
             request_options={"timeout": 600},  # 10-minute timeout
         )
@@ -271,32 +279,29 @@ def analyze_keywords_with_gemini(keywords, serp_data, seed_keyword, goal):
         return None
 
 # Streamlit UI
-# Remove the main title
-# st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
+st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
 
 # Initialize session state to store keywords and SERP results
 if "all_keywords" not in st.session_state:
     st.session_state.all_keywords = set()
-if "serp_data" not in st.session_state:
-    st.session_state.serp_data = {}
+if "serp_results" not in st.session_state:
+    st.session_state.serp_results = {}
 if "gemini_output" not in st.session_state:
     st.session_state.gemini_output = None
 
 # Sidebar for user input and settings
 with st.sidebar:
-    st.header("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")  # Replace "Settings" with the new title
+    st.header("Settings")
     query = st.text_input("Enter a seed keyword:")
-    goal = st.text_input("Enter your goal for this search (e.g., 'Find affordable plumbing services'):")  # New goal input field
     st.markdown("---")
     st.markdown("**Instructions:**")
     st.markdown("1. Enter a seed keyword (e.g., 'AI').")
-    st.markdown("2. Enter your goal for this search.")
-    st.markdown("3. The app will fetch autosuggest keywords and SERP results.")
-    st.markdown("4. Keywords will be analyzed and grouped by intent using Gemini.")
+    st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
+    st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
 # Main content
-if query and goal:  # Ensure both seed keyword and goal are provided
-    # Initialize progress bar and status text (hidden from UI)
+if query:
+    # Initialize progress bar and status text
     progress_bar = st.progress(0)
     status_text = st.empty()
 
@@ -309,96 +314,63 @@ if query and goal:  # Ensure both seed keyword and goal are provided
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query, goal, max_keywords=1000)  # Increased max_keywords to 1000
+    expanded_keywords = generate_expanded_keywords(query, max_keywords=500)
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
-        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text, max_keywords=1000))  # Increased max_keywords to 1000
+        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text, max_keywords=500))
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP links and scrape content for each keyword
+    # Step 4: Fetch SERP results for each keyword concurrently (uses proxy)
     if st.session_state.all_keywords:
-        with st.spinner("Fetching SERP links and scraping content..."):
-            st.session_state.serp_data = fetch_serp_links_and_content(st.session_state.all_keywords)
-            progress_bar.progress(0.8)
-            status_text.text("Fetching SERP results and scraping content...")
+        st.success("Keyword fetching completed!")
+        st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        # Display scraped content in a collapsible box
-        with st.expander("View Scraped Content (Sample)"):
-            for keyword, results in st.session_state.serp_data.items():
-                st.write(f"**Keyword: {keyword}**")
-                for i, result in enumerate(results, start=1):
-                    st.write(f"  **Result {i}:**")
-                    st.write(f"    **Link:** {result['link']}")
-                    st.write(f"    **Content:** {result['content'][:500]}...")  # Show first 500 characters of content
-                st.write("---")
+        # Debugging: Log the number of keywords being processed
+        st.write(f"Debug: Fetching SERP results for {len(st.session_state.all_keywords)} keywords...")
+
+        with st.spinner("Fetching SERP results for each keyword concurrently..."):
+            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
+            progress_bar.progress(0.8)
+            status_text.text("Fetching SERP results...")
+
+        # Debugging: Log the contents of serp_results
+        st.write("Debug: SERP Results Dictionary")
+        st.write(st.session_state.serp_results)
+
+        # Log SERP data in a collapsible box (for inspection only)
+        with st.expander("View Scraped SERP Data (Sample)"):
+            serp_log = format_serp_data_for_logging(st.session_state.serp_results)
+            st.text_area("SERP Data Log", value=serp_log, height=300, key="serp_log")
 
         # Step 5: Analyze keywords with Gemini
-        if st.session_state.serp_data:
+        if st.session_state.serp_results:
             with st.spinner("Analyzing keywords with Gemini..."):
-                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_data, query, goal)
+                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results, query)
                 progress_bar.progress(1.0)
                 status_text.text("Analysis complete!")
 
-        # Display Gemini output as collapsible cards in a 3-column grid
+        # Display Gemini output as collapsible cards
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
             
             # Split the Gemini output into individual themes
             themes = st.session_state.gemini_output.strip().split("\n\n")
             
-            # Create a container for the grid layout
-            grid_container = st.container()
-            
-            # Initialize a counter to track the number of cards added
-            card_counter = 0
-            
-            # Loop through themes and display them in a 3-column grid
-            with grid_container:
-                for theme in themes:
-                    if theme.strip():  # Ensure the theme is not empty
-                        # Split the theme into its name and keywords
-                        theme_lines = theme.strip().split("\n")
-                        theme_name = theme_lines[0]  # The first line is the theme name
-                        theme_keywords = "\n".join(theme_lines[1:])  # The rest are keywords
-                        
-                        # Create a card-like layout using columns
-                        if card_counter % 3 == 0:
-                            col1, col2, col3 = st.columns(3)  # Create a new row of 3 columns
-                        
-                        # Determine which column to use for the current card
-                        if card_counter % 3 == 0:
-                            current_col = col1
-                        elif card_counter % 3 == 1:
-                            current_col = col2
-                        else:
-                            current_col = col3
-                        
-                        # Display the theme as a collapsible card
-                        with current_col:
-                            with st.expander(theme_name):
-                                st.markdown(
-                                    f"""
-                                    <div style="
-                                        padding: 10px;
-                                        border: 1px solid #ddd;
-                                        border-radius: 10px;
-                                        background-color: #f9f9f9;
-                                        height: 250px;  # Fixed height for squared cards
-                                        overflow-y: auto;  # Add scroll if content overflows
-                                    ">
-                                        <pre style="white-space: pre-wrap;">{theme_keywords}</pre>
-                                    </div>
-                                    """,
-                                    unsafe_allow_html=True,
-                                )
-                        
-                        # Increment the card counter
-                        card_counter += 1
+            for theme in themes:
+                if theme.strip():  # Ensure the theme is not empty
+                    # Split the theme into its name and keywords
+                    theme_lines = theme.strip().split("\n")
+                    theme_name = theme_lines[0]  # The first line is the theme name
+                    theme_keywords = "\n".join(theme_lines[1:])  # The rest are keywords
+                    
+                    # Display the theme as a collapsible card
+                    with st.expander(theme_name):
+                        st.markdown(theme_keywords)
     else:
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = set()
-    st.session_state.serp_data = {}
+    st.session_state.serp_results = {}
     st.session_state.gemini_output = None
