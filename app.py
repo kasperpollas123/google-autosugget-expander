@@ -141,21 +141,51 @@ def analyze_keywords_with_gemini(keywords, serp_results):
     prompt = """
     Please analyse the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. You may use the same keyword more than once in different themes but only once in each theme. The themes should have a catchy and inspiring headline and underneath the headline should simply be the keywords that are grouped together. For each group please remove and omit keywords that are too similar to other keywords and basically mean the same thing and reflect the same intent like for example 'my cat peeing everywhere' and 'cat is peeing everywhere'. You are not allowed to make up keywords that are not on the list i give you. Please limit each group to a maximum of 20 keywords. If there are any keywords that stick out as weird for example asking for the keyword in a specific language or if they just stick out to much compared to the overall intent of most of the keywords, then please remove them.
 
-    The final output should look like this:
+    The final output should look EXACTLY like this:
 
-    Inspiring headline
-    - Keyword
-    - Keyword
-    - Keyword
+    Finding Local Plumbing Professionals
+    - r plumbing company
+    - j plumbing chicago
+    - z plumbers livonia
+    - r plumber llc
+    - r plumbing
+    - j.p. plumbing
+    - z plumbing and heating
+    - r plumbing llc reviews
 
-    Inspiring headline
-    - Keyword
-    - Keyword
-    - Keyword
+    Generating Plumbing Leads
+    - plumbing lead generation agency fatrank
+    - plumber lead generation
+    - how to get plumbing leads
+    - plumbing lead generation james dooley
+    - plumbing lead generation services
+    - plumbing leads near me
+    - plumbing leads for plumbers
+    - plumbing lead generation services fatrank
+    - plumbing lead generation company james dooley
+    - plumbing lead generation
 
-    and so on...
+    Understanding Lead Pipes in Plumbing
+    - lead plumbing pipe
+    - plumbing lead
+    - plumbing lead joint
+    - lead plumbing
+    - plumbing lead pipes
+    - lead plumbing history
+    - led plumbing
+    - is lead still used in plumbing
+    - how much to replace lead plumbing
+    - who is responsible for replacing lead water pipes
 
-    I want you to get creative in the way that you group the keywords together. But keep the actual headlines descriptive and not creative at all. They need to correspond to a general search intent. Have in mind that the reader of your output is looking to understand what types or articles can be written or what types of tools can be build or what types of directories can be made etc. You need to make sure that a keyword is only included in a group if it belongs there and fits with the theme/headline of the group. If you are in doubt leave out the keyword. Also please make sure to remove keywords that are to similar to another keyword that are already contained in the group. It is very important that your output is just what i asked for in the format and that you dont give any explanations of write anything else. Also dont create groups of keywords that you cant fit in anywhere like for example "miscelaneous" or "keywords that dont belong" or similar. Finally if you notice that a group of keywords stick out and seems unrelated to the general broad theme of all of the other groups, please delete that group and dont include it in your output. As an example if all groups are about cat urinations in some way or closely related to this and you find and group keywords related to human urination, please just omit that group and the related keywords from your output.
+    Plumbing Tools and Equipment
+    - plumbing lead tools
+    - plumbing lead melting pot
+
+    Plumbing Job Information
+    - lead plumber salary
+    - lead plumber job description
+
+    Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format. The format must be EXACTLY as shown above, with no deviations.
     """
 
     # Prepare the chat input for Gemini
