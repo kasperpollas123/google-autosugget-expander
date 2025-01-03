@@ -8,34 +8,13 @@ from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
-import random
 
-# List of Oxylabs proxy endpoints
-PROXY_ENDPOINTS = [
-    {
-        "user": "customer-kasperpollas12345_Lyt6m-cc-us",
-        "password": "Snaksnak12345+",
-        "host": "pr.oxylabs.io",
-        "port": "7777",
-    },
-    {
-        "user": "kasperpollas_EImZC-cc-us",
-        "password": "L6mFKak8Uz286dC+",
-        "host": "pr.oxylabs.io",
-        "port": "7777",
-    },
-    {
-        "user": "kasperpollasletsgo123-cc-us",
-        "password": "Akkkk11jrk34j+",
-        "host": "pr.oxylabs.io",
-        "port": "7777",
-    },
-]
-
-# Function to get a proxy for a specific worker
-def get_proxy_for_worker(worker_id):
-    proxy = PROXY_ENDPOINTS[worker_id % len(PROXY_ENDPOINTS)]
-    return f"http://{proxy['user']}:{proxy['password']}@{proxy['host']}:{proxy['port']}"
+# Oxylabs proxy endpoint
+PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
+PROXY_PASS = "Snaksnak12345+"
+PROXY_HOST = "pr.oxylabs.io"
+PROXY_PORT = "7777"
+PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 # Google Gemini API key
 GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
@@ -45,26 +24,24 @@ genai.configure(api_key=GEMINI_API_KEY)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Function to fetch Google autosuggest keywords with retries
-def get_autosuggest(query, worker_id, max_retries=3):
+def get_autosuggest(query, max_retries=3):
     url = "https://www.google.com/complete/search"
     params = {
         "q": query,
         "client": "chrome",
     }
+    proxies = {
+        "http": PROXY_URL,
+        "https": PROXY_URL,
+    }
     for attempt in range(max_retries):
         try:
-            # Use a specific proxy for this worker
-            proxies = {
-                "http": get_proxy_for_worker(worker_id),
-                "https": get_proxy_for_worker(worker_id),
-            }
-            response = requests.get(url, params=params, proxies=proxies, timeout=30)
+            response = requests.get(url, params=params, proxies=proxies)
             response.raise_for_status()
             return response.json()[1]
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
-                st.warning(f"Attempt {attempt + 1} failed for '{query}': {e}. Retrying...")
-                time.sleep(1)  # Wait before retrying
+                time.sleep(1)
             else:
                 st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
     return []
@@ -80,8 +57,8 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries):
     all_keywords = set()
-    with ThreadPoolExecutor(max_workers=150) as executor:  # Increased max_workers
-        futures = {executor.submit(get_autosuggest, query, i): query for i, query in enumerate(queries)}
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        futures = {executor.submit(get_autosuggest, query): query for query in queries}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
                 keywords = future.result()
@@ -95,18 +72,17 @@ def fetch_keywords_concurrently(queries):
     return all_keywords
 
 # Function to fetch and parse Google SERP
-def fetch_google_serp(query, worker_id, limit=5, retries=3):
+def fetch_google_serp(query, limit=5, retries=3):
     url = f"https://www.google.com/search?q={query}"
     for attempt in range(retries):
         try:
-            # Use a specific proxy for this worker
             proxies = {
-                "http": get_proxy_for_worker(worker_id),
-                "https": get_proxy_for_worker(worker_id),
+                "http": PROXY_URL,
+                "https": PROXY_URL,
             }
             session = requests.Session()
             session.cookies.clear()
-            response = session.get(url, proxies=proxies, timeout=30)
+            response = session.get(url, proxies=proxies)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
@@ -146,8 +122,8 @@ def fetch_google_serp(query, worker_id, limit=5, retries=3):
 # Function to fetch SERP results concurrently
 def fetch_serp_results_concurrently(keywords):
     serp_results = {}
-    with ThreadPoolExecutor(max_workers=30) as executor:  # Increased max_workers
-        futures = {executor.submit(fetch_google_serp, keyword, i): keyword for i, keyword in enumerate(keywords)}
+    with ThreadPoolExecutor(max_workers=20) as executor:  # Adjust max_workers as needed
+        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
             try:
@@ -267,7 +243,7 @@ if query:
 
     # Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
-        initial_keywords = get_autosuggest(query, worker_id=0)  # Use worker_id=0 for the initial request
+        initial_keywords = get_autosuggest(query)
         if initial_keywords:
             st.session_state.all_keywords.update(initial_keywords)
         progress_value = 1 / total_variations
