@@ -70,7 +70,7 @@ def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
 
 # Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword):
+def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
 
@@ -121,7 +121,8 @@ def generate_expanded_keywords(seed_keyword):
         if not any(is_similar(kw, existing_kw) for existing_kw in unique_keywords):
             unique_keywords.append(kw)
 
-    return unique_keywords
+    # Limit the number of keywords
+    return unique_keywords[:max_keywords]
 
 # Function to fetch and parse Google SERP (limit to 3 results)
 def fetch_google_serp(query, limit=3, retries=3):
@@ -297,7 +298,7 @@ if query:
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query)
+    expanded_keywords = generate_expanded_keywords(query, max_keywords=500)
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
