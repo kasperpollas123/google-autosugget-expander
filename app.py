@@ -48,11 +48,21 @@ def get_autosuggest(query, max_retries=3):
 
 # Function to generate expanded keyword variations
 def generate_expanded_keywords(seed_keyword):
-    expanded_keywords = []
-    for letter in string.ascii_lowercase:
-        expanded_keywords.append(f"{seed_keyword} {letter}")
-        expanded_keywords.append(f"{letter} {seed_keyword}")
-    return expanded_keywords
+    # Fetch initial autosuggest keywords
+    initial_keywords = get_autosuggest(seed_keyword)
+
+    # Generate keyword variations using initial autosuggest keywords
+    expanded_keywords = set()
+
+    # Add seed keyword
+    expanded_keywords.add(seed_keyword)
+
+    # Add seed keyword + initial autosuggest keywords
+    for keyword in initial_keywords:
+        expanded_keywords.add(f"{seed_keyword} {keyword}")
+        expanded_keywords.add(f"{keyword} {seed_keyword}")
+
+    return list(expanded_keywords)
 
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries, progress_bar, status_text):
