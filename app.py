@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from bs4 import BeautifulSoup
+from selectolax.parser import HTMLParser  # Replaced BeautifulSoup with selectolax
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
@@ -137,18 +137,19 @@ def fetch_google_serp(query, limit=3, retries=3):
             session.cookies.clear()
             response = session.get(url, proxies=proxies)
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'lxml')
+                # Use selectolax to parse the HTML
+                parser = HTMLParser(response.text)
                 results = []
-                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
-                    if "ads" in result.get("class", []):
+                for result in parser.css('div.Gx5Zad.xpd.EtOod.pkphOe')[:limit]:
+                    if "ads" in result.attributes.get("class", ""):
                         continue
-                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
-                    title = title_element.get_text().strip() if title_element else "No Title Found"
-                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
-                                         result.find('div', class_='v9i61e') or \
-                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
-                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
-                    description = description_element.get_text().strip() if description_element else "No Description Found"
+                    title_element = result.css_first('h3') or result.css_first('h2') or result.css_first('div.BNeawe.vvjwJb.AP7Wnd')
+                    title = title_element.text().strip() if title_element else "No Title Found"
+                    description_element = result.css_first('div.BNeawe.s3v9rd.AP7Wnd') or \
+                                         result.css_first('div.v9i61e') or \
+                                         result.css_first('div.BNeawe.UPmit.AP7Wnd.lRVwie') or \
+                                         result.css_first('div.BNeawe.s3v9rd.AP7Wnd')
+                    description = description_element.text().strip() if description_element else "No Description Found"
                     results.append({
                         "title": title,
                         "description": description
