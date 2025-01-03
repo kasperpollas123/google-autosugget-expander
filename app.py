@@ -355,23 +355,61 @@ if query:
                 progress_bar.progress(1.0)
                 status_text.text("Analysis complete!")
 
-        # Display Gemini output as collapsible cards
+        # Display Gemini output as squared cards in a 3-column grid
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
             
             # Split the Gemini output into individual themes
             themes = st.session_state.gemini_output.strip().split("\n\n")
             
-            for theme in themes:
-                if theme.strip():  # Ensure the theme is not empty
-                    # Split the theme into its name and keywords
-                    theme_lines = theme.strip().split("\n")
-                    theme_name = theme_lines[0]  # The first line is the theme name
-                    theme_keywords = "\n".join(theme_lines[1:])  # The rest are keywords
-                    
-                    # Display the theme as a collapsible card
-                    with st.expander(theme_name):
-                        st.markdown(theme_keywords)
+            # Create a container for the grid layout
+            grid_container = st.container()
+            
+            # Initialize a counter to track the number of cards added
+            card_counter = 0
+            
+            # Loop through themes and display them in a 3-column grid
+            with grid_container:
+                for theme in themes:
+                    if theme.strip():  # Ensure the theme is not empty
+                        # Split the theme into its name and keywords
+                        theme_lines = theme.strip().split("\n")
+                        theme_name = theme_lines[0]  # The first line is the theme name
+                        theme_keywords = "\n".join(theme_lines[1:])  # The rest are keywords
+                        
+                        # Create a card-like layout using columns
+                        if card_counter % 3 == 0:
+                            col1, col2, col3 = st.columns(3)  # Create a new row of 3 columns
+                        
+                        # Determine which column to use for the current card
+                        if card_counter % 3 == 0:
+                            current_col = col1
+                        elif card_counter % 3 == 1:
+                            current_col = col2
+                        else:
+                            current_col = col3
+                        
+                        # Display the theme as a squared card
+                        with current_col:
+                            st.markdown(
+                                f"""
+                                <div style="
+                                    padding: 10px;
+                                    border: 1px solid #ddd;
+                                    border-radius: 10px;
+                                    background-color: #f9f9f9;
+                                    height: 250px;  # Fixed height for squared cards
+                                    overflow-y: auto;  # Add scroll if content overflows
+                                ">
+                                    <h4>{theme_name}</h4>
+                                    <pre style="white-space: pre-wrap;">{theme_keywords}</pre>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                        
+                        # Increment the card counter
+                        card_counter += 1
     else:
         st.write("No keywords found.")
 else:
