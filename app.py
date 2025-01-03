@@ -1,13 +1,12 @@
 import streamlit as st
 import requests
-import string
 import time
-import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
+from PyDictionary import PyDictionary  # For thesaurus-based synonyms
 
 # Oxylabs proxy endpoint
 PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
@@ -22,6 +21,9 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 # Initialize Gemini model (Updated to use Gemini 1.5 Pro)
 gemini_model = genai.GenerativeModel('gemini-1.5-pro')
+
+# Initialize thesaurus
+dictionary = PyDictionary()
 
 # Function to fetch Google autosuggest keywords with retries
 def get_autosuggest(query, max_retries=3):
@@ -46,23 +48,65 @@ def get_autosuggest(query, max_retries=3):
                 st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
     return []
 
+# Function to fetch synonyms using a thesaurus
+def get_synonyms(word):
+    try:
+        synonyms = dictionary.synonym(word)
+        return synonyms if synonyms else []
+    except Exception as e:
+        st.warning(f"Error fetching synonyms for '{word}': {e}")
+        return []
+
 # Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword):
-    # Fetch initial autosuggest keywords
-    initial_keywords = get_autosuggest(seed_keyword)
+def generate_expanded_keywords(seed_keyword, user_modifiers=None):
+    # Fetch Level 1 autosuggest keywords
+    level1_keywords = get_autosuggest(seed_keyword)
 
-    # Generate keyword variations using initial autosuggest keywords
-    expanded_keywords = set()
+    # Fetch Level 2 autosuggest keywords
+    level2_keywords = set()
+    for keyword in level1_keywords:
+        level2_keywords.update(get_autosuggest(keyword))
 
-    # Add seed keyword
-    expanded_keywords.add(seed_keyword)
+    # Fetch synonyms for the seed keyword
+    synonyms = get_synonyms(seed_keyword)
 
-    # Add seed keyword + initial autosuggest keywords
-    for keyword in initial_keywords:
-        expanded_keywords.add(f"{seed_keyword} {keyword}")
-        expanded_keywords.add(f"{keyword} {seed_keyword}")
+    # Combine all keywords
+    all_keywords = set()
+    all_keywords.add(seed_keyword)
+    all_keywords.update(level1_keywords)
+    all_keywords.update(level2_keywords)
+    all_keywords.update(synonyms)
 
-    return list(expanded_keywords)
+    # Universal modifiers
+    universal_modifiers = [
+        # Question-based
+        "how to", "why is", "what is", "where to", "when to", "who is",
+        # Intent-based
+        "guide to", "tips for", "benefits of", "buy", "hire", "find", "order", "near me", "website", "location",
+        # Quality-based
+        "best", "cheap", "affordable", "top", "reliable",
+        # Time-based
+        "emergency", "24/7", "quick", "fast",
+        # Location-based
+        "near me", "local"
+    ]
+
+    # Add user-provided modifiers (if any)
+    if user_modifiers:
+        universal_modifiers.extend(user_modifiers)
+
+    # Apply universal modifiers to the seed keyword, autosuggest keywords, and synonyms
+    for modifier in universal_modifiers:
+        all_keywords.add(f"{modifier} {seed_keyword}")
+        all_keywords.add(f"{seed_keyword} {modifier}")
+        for keyword in level1_keywords:
+            all_keywords.add(f"{modifier} {keyword}")
+            all_keywords.add(f"{keyword} {modifier}")
+        for synonym in synonyms:
+            all_keywords.add(f"{modifier} {synonym}")
+            all_keywords.add(f"{synonym} {modifier}")
+
+    return list(all_keywords)
 
 # Function to fetch keywords concurrently using multi-threading
 def fetch_keywords_concurrently(queries, progress_bar, status_text):
@@ -248,17 +292,22 @@ if "gemini_output" not in st.session_state:
 with st.sidebar:
     st.header("Settings")
     query = st.text_input("Enter a seed keyword:")
+    user_modifiers = st.text_area("Enter additional modifiers (comma-separated):")
     st.markdown("---")
     st.markdown("**Instructions:**")
     st.markdown("1. Enter a seed keyword (e.g., 'plumbing').")
-    st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
-    st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
+    st.markdown("2. Optionally, enter additional modifiers (e.g., 'emergency, residential').")
+    st.markdown("3. The app will fetch autosuggest keywords and SERP results.")
+    st.markdown("4. Keywords will be analyzed and grouped by intent using Gemini.")
 
 # Main content
 if query:
     # Initialize progress bar and status text
     progress_bar = st.progress(0)
     status_text = st.empty()
+
+    # Parse user-provided modifiers
+    user_modifiers_list = [modifier.strip() for modifier in user_modifiers.split(",")] if user_modifiers else []
 
     # Step 1: Fetch initial autosuggest keywords
     with st.spinner("Fetching initial autosuggest keywords..."):
@@ -269,7 +318,7 @@ if query:
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query)
+    expanded_keywords = generate_expanded_keywords(query, user_modifiers_list)
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
