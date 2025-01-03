@@ -137,23 +137,50 @@ def fetch_serp_results_concurrently(keywords):
 
 # Function to analyze keywords with Gemini
 def analyze_keywords_with_gemini(keywords, serp_results):
-    # Prepare the input for Gemini
-    input_text = "Please analyse the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. You may use the same keyword more than once in different themes but only once in each theme. The themes should have a catchy and inspiring headline and underneath the headline should simply be the keywords that are grouped together. For each group please remove and omit keywords that are too similar to other keywords and basically mean the same thing and reflect the same intent like for example 'my cat peeing everywhere' and 'cat is peeing everywhere'. You are not allowed to make up keywords that are not on the list i give you. Please limit each group to a maximum of 20 keywords. If there are any keywords that stick out as weird for example asking for the keyword in a specific language or if they just stick out to much compared to the overall intent of most of the keywords, then please remove them.\n\n"
-    input_text += "Here is the list of keywords and their SERP results:\n"
-    
-    # Filter out invalid results and format the input
+    # System instructions and chat input (same content)
+    prompt = """
+    Please analyse the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. You may use the same keyword more than once in different themes but only once in each theme. The themes should have a catchy and inspiring headline and underneath the headline should simply be the keywords that are grouped together. For each group please remove and omit keywords that are too similar to other keywords and basically mean the same thing and reflect the same intent like for example 'my cat peeing everywhere' and 'cat is peeing everywhere'. You are not allowed to make up keywords that are not on the list i give you. Please limit each group to a maximum of 20 keywords. If there are any keywords that stick out as weird for example asking for the keyword in a specific language or if they just stick out to much compared to the overall intent of most of the keywords, then please remove them.
+
+    The final output should look like this:
+
+    Inspiring headline
+    - Keyword
+    - Keyword
+    - Keyword
+
+    Inspiring headline
+    - Keyword
+    - Keyword
+    - Keyword
+
+    and so on...
+
+    I want you to get creative in the way that you group the keywords together. But keep the actual headlines descriptive and not creative at all. They need to correspond to a general search intent. Have in mind that the reader of your output is looking to understand what types or articles can be written or what types of tools can be build or what types of directories can be made etc. You need to make sure that a keyword is only included in a group if it belongs there and fits with the theme/headline of the group. If you are in doubt leave out the keyword. Also please make sure to remove keywords that are to similar to another keyword that are already contained in the group. It is very important that your output is just what i asked for in the format and that you dont give any explanations of write anything else. Also dont create groups of keywords that you cant fit in anywhere like for example "miscelaneous" or "keywords that dont belong" or similar. Finally if you notice that a group of keywords stick out and seems unrelated to the general broad theme of all of the other groups, please delete that group and dont include it in your output. As an example if all groups are about cat urinations in some way or closely related to this and you find and group keywords related to human urination, please just omit that group and the related keywords from your output.
+    """
+
+    # Prepare the chat input for Gemini
+    chat_input = "Here is the list of keywords and their SERP results:\n"
     for keyword, results in serp_results.items():
         if isinstance(results, list):  # Only process valid SERP results
-            input_text += f"Keyword: {keyword}\n"
+            chat_input += f"Keyword: {keyword}\n"
             for i, result in enumerate(results, start=1):
                 if isinstance(result, dict) and "title" in result and "description" in result:  # Ensure result is valid
-                    input_text += f"  Result {i}:\n"
-                    input_text += f"    Title: {result['title']}\n"
-                    input_text += f"    Description: {result['description']}\n"
-            input_text += "\n"
-    
-    # Send the input to Gemini
-    response = gemini_model.generate_content(input_text)
+                    chat_input += f"  Result {i}:\n"
+                    chat_input += f"    Title: {result['title']}\n"
+                    chat_input += f"    Description: {result['description']}\n"
+            chat_input += "\n"
+
+    # Configure Gemini generation settings
+    generation_config = {
+        "temperature": 1,  # Higher temperature for more creative outputs
+        "max_output_tokens": 2000,  # Limit response length
+    }
+
+    # Send the input to Gemini (same prompt in both system instructions and chat input)
+    response = gemini_model.generate_content(
+        contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
+        generation_config=generation_config,
+    )
     return response.text
 
 # Streamlit UI
