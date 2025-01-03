@@ -140,7 +140,7 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
 
     # Configure Gemini generation settings
     generation_config = {
-        "temperature": 1,  # Higher temperature for more creative outputs
+        "temperature": 0,  # Higher temperature for more creative outputs
         "max_output_tokens": 8192,  # Set output token limit to 8192
         "top_p": 0.95,  # Set top_p to 0.95
     }
