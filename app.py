@@ -213,13 +213,22 @@ if "gemini_output" not in st.session_state:
 query = st.text_input("Enter a seed keyword:")
 
 if query:
-    # Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query)
-
-    # Fetch autosuggest keywords concurrently
-    with st.spinner("Fetching autosuggest keywords concurrently..."):
+    # Step 1: Fetch initial autosuggest keywords
+    with st.spinner("Fetching initial autosuggest keywords..."):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        initial_keywords = loop.run_until_complete(get_autosuggest(query, aiohttp.ClientSession()))
+        if initial_keywords:
+            st.session_state.all_keywords.update(initial_keywords)
+            st.success(f"Fetched {len(initial_keywords)} initial keywords.")
+        else:
+            st.error("Failed to fetch initial keywords.")
+
+    # Step 2: Generate expanded keyword variations
+    expanded_keywords = generate_expanded_keywords(query)
+
+    # Step 3: Fetch autosuggest keywords concurrently
+    with st.spinner("Fetching expanded autosuggest keywords concurrently..."):
         results = loop.run_until_complete(fetch_keywords_concurrently(expanded_keywords))
 
         # Filter out exceptions and ensure only valid lists are processed
@@ -232,24 +241,28 @@ if query:
 
         # Update session state with valid keywords
         st.session_state.all_keywords.update(valid_keywords)
+        st.success(f"Fetched {len(valid_keywords)} expanded keywords.")
 
-    # Fetch SERP results concurrently
+    # Step 4: Fetch SERP results concurrently
     if st.session_state.all_keywords:
         with st.spinner("Fetching SERP results concurrently..."):
             serp_results = loop.run_until_complete(fetch_serp_results_concurrently(st.session_state.all_keywords))
             st.session_state.serp_results = serp_results
+            st.success(f"Fetched SERP results for {len(serp_results)} keywords.")
 
-        # Analyze keywords with Gemini
+        # Step 5: Analyze keywords with Gemini
         if st.session_state.serp_results:
             with st.spinner("Analyzing keywords with Gemini..."):
                 st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results)
 
-        # Display Gemini output
-        if st.session_state.gemini_output:
-            st.subheader("Keyword Themes and Groups")
-            st.markdown(st.session_state.gemini_output)
+            # Display Gemini output
+            if st.session_state.gemini_output:
+                st.subheader("Keyword Themes and Groups")
+                st.markdown(st.session_state.gemini_output)
+            else:
+                st.write("No valid SERP results found for analysis.")
         else:
-            st.write("No valid SERP results found for analysis.")
+            st.write("No SERP results found.")
     else:
         st.write("No keywords found.")
 else:
