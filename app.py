@@ -25,19 +25,22 @@ genai.configure(api_key=GEMINI_API_KEY)
 # Initialize Gemini model (Updated to use Gemini 1.5 Flash)
 gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
+# Custom headers to mimic a real browser
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+}
+
 # Function to fetch Google autosuggest keywords asynchronously
 async def get_autosuggest(query, session):
     url = "https://www.google.com/complete/search"
     params = {"q": query, "client": "chrome"}
     logger.debug(f"Fetching autosuggest for: {query}")
     try:
-        # Temporarily bypass proxy for testing
-        # async with session.get(url, params=params, proxy=PROXY_URL, timeout=10) as response:
-        async with session.get(url, params=params, timeout=10) as response:  # Remove proxy for testing
+        async with session.get(url, params=params, headers=HEADERS, timeout=10) as response:
             response.raise_for_status()
-            data = await response.json()
-            logger.debug(f"Successfully fetched autosuggest for: {query}")
-            return data[1]
+            data = await response.text()  # Log raw response data
+            logger.debug(f"Raw response for '{query}': {data}")
+            return response.json()[1]
     except Exception as e:
         logger.error(f"Error fetching autosuggest for '{query}': {e}")
         return []
@@ -54,7 +57,7 @@ def generate_expanded_keywords(seed_keyword):
 # Function to fetch keywords concurrently using asyncio
 async def fetch_keywords_concurrently(queries):
     semaphore = asyncio.Semaphore(20)  # Reduce concurrency to avoid rate-limiting
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
         tasks = []
         for query in queries:
             async with semaphore:
@@ -69,9 +72,7 @@ async def fetch_google_serp(query, session, limit=5):
     url = f"https://www.google.com/search?q={query}"
     logger.debug(f"Fetching SERP for: {query}")
     try:
-        # Temporarily bypass proxy for testing
-        # async with session.get(url, proxy=PROXY_URL, timeout=10) as response:
-        async with session.get(url, timeout=10) as response:  # Remove proxy for testing
+        async with session.get(url, headers=HEADERS, timeout=10) as response:
             if response.status == 200:
                 html = await response.text()
                 soup = BeautifulSoup(html, 'lxml')
@@ -102,7 +103,7 @@ async def fetch_google_serp(query, session, limit=5):
 # Function to fetch SERP results concurrently using asyncio
 async def fetch_serp_results_concurrently(keywords):
     semaphore = asyncio.Semaphore(20)  # Reduce concurrency to avoid rate-limiting
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
         tasks = []
         for keyword in keywords:
             task = asyncio.create_task(fetch_google_serp(keyword, session))
