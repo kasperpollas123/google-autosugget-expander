@@ -137,26 +137,22 @@ def fetch_google_serp(query, limit=3, retries=3):
             session.cookies.clear()
             response = session.get(url, proxies=proxies)
             if response.status_code == 200:
-                tree = html.fromstring(response.text)  # Use lxml to parse HTML
+                tree = html.fromstring(response.text)
                 results = []
-                # Focus on organic results (divs with class "Gx5Zad xpd EtOod pkphOe")
-                for result in tree.xpath('//div[@class="Gx5Zad xpd EtOod pkphOe"]')[:limit]:
+                # Focus on organic results (divs with class that contains "yuRUbf")
+                for result in tree.xpath('//div[contains(@class, "yuRUbf")]')[:limit]:
                     # Skip YouTube results
                     if result.xpath('.//span[contains(text(), "YouTube")]'):
                         continue
-                    
-                    # Extract title
+                        
+                    # Extract title (prioritizing h3, then h2, then div elements)
                     title_element = result.xpath('.//h3 | .//h2 | .//div[contains(@class, "BNeawe vvjwJb AP7Wnd")]')
                     title = title_element[0].text_content().strip() if title_element else "No Title Found"
-                    
-                    # Extract description
-                    description_element = result.xpath('.//div[contains(@class, "BNeawe s3v9rd AP7Wnd")] | '
-                                                      './/div[contains(@class, "v9i61e")] | '
-                                                      './/div[contains(@class, "BNeawe UPmit AP7Wnd lRVwie")] | '
-                                                      './/div[contains(@class, "BNeawe s3v9rd AP7Wnd")]')
+
+                    # Extract description (using general span/div with 'aCOpRe')
+                    description_element = result.xpath('.//span[contains(@class, "aCOpRe")] | .//div[contains(@class, "aCOpRe")] | .//span[contains(@class, "IsZvec")]')
                     description = description_element[0].text_content().strip() if description_element else "No Description Found"
                     
-                    # Add to results
                     results.append({
                         "title": title,
                         "description": description
