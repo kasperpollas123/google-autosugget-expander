@@ -70,7 +70,7 @@ def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
 
 # Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword, max_keywords=500):
+def generate_expanded_keywords(seed_keyword, goal, max_keywords=500):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
 
@@ -227,7 +227,7 @@ def format_serp_data_for_logging(serp_results):
     return log_output
 
 # Function to analyze keywords with Gemini
-def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
+def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword, goal):
     # System instructions and chat input
     prompt = f"""
     Please analyze the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. 
@@ -239,6 +239,7 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
     4. Limit each group to a maximum of 10 keywords.
     5. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
     6. Ensure all keywords are grouped into relevant themes. Do not create an "Other" group.
+    7. Focus on keywords that align with the following goal: {goal}.
 
     The final output should look EXACTLY like this:
 
@@ -298,14 +299,16 @@ if "gemini_output" not in st.session_state:
 with st.sidebar:
     st.header("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")  # Replace "Settings" with the new title
     query = st.text_input("Enter a seed keyword:")
+    goal = st.text_input("Enter your goal for this search (e.g., 'Find affordable plumbing services'):")  # New goal input field
     st.markdown("---")
     st.markdown("**Instructions:**")
     st.markdown("1. Enter a seed keyword (e.g., 'AI').")
-    st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
-    st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
+    st.markdown("2. Enter your goal for this search.")
+    st.markdown("3. The app will fetch autosuggest keywords and SERP results.")
+    st.markdown("4. Keywords will be analyzed and grouped by intent using Gemini.")
 
 # Main content
-if query:
+if query and goal:  # Ensure both seed keyword and goal are provided
     # Initialize progress bar and status text (hidden from UI)
     progress_bar = st.empty()
     status_text = st.empty()
@@ -319,7 +322,7 @@ if query:
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query, max_keywords=500)
+    expanded_keywords = generate_expanded_keywords(query, goal, max_keywords=500)
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
@@ -329,11 +332,6 @@ if query:
 
     # Step 4: Fetch SERP results for each keyword concurrently (uses proxy)
     if st.session_state.all_keywords:
-        # Hide "Keyword fetching completed!" and "Total keywords fetched: 18"
-        # Hide "Debug: Fetching SERP results for 18 keywords..."
-        # Hide "Debug: SERP Results Dictionary" and the JSON output
-        # Hide "View Scraped SERP Data (Sample)" and the box around it
-
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
             st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
             progress_bar.progress(0.8)
@@ -342,7 +340,7 @@ if query:
         # Step 5: Analyze keywords with Gemini
         if st.session_state.serp_results:
             with st.spinner("Analyzing keywords with Gemini..."):
-                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results, query)
+                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results, query, goal)
                 progress_bar.progress(1.0)
                 status_text.text("Analysis complete!")
 
