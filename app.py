@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
+from google.api_core import retry
 
 # Oxylabs proxy endpoint
 PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
@@ -203,15 +204,23 @@ def analyze_keywords_with_gemini(keywords, serp_results):
     # Configure Gemini generation settings
     generation_config = {
         "temperature": 1,  # Higher temperature for more creative outputs
-        "max_output_tokens": 2000,  # Limit response length
+        "max_output_tokens": 10000,  # Increase output token limit to 10,000
     }
 
-    # Send the input to Gemini (same prompt in both system instructions and chat input)
-    response = gemini_model.generate_content(
-        contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
-        generation_config=generation_config,
-    )
-    return response.text
+    # Retry logic for API calls
+    @retry.Retry()
+    def call_gemini():
+        return gemini_model.generate_content(
+            contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
+            generation_config=generation_config,
+        )
+
+    try:
+        response = call_gemini()
+        return response.text
+    except Exception as e:
+        st.error(f"Error calling Gemini API: {e}")
+        return None
 
 # Streamlit UI
 st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
