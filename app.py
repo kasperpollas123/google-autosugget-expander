@@ -327,15 +327,22 @@ if query:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        # Log SERP data in a collapsible box (for inspection only)
-        with st.expander("View Scraped SERP Data (Sample)"):
-            serp_log = format_serp_data_for_logging(st.session_state.serp_results)
-            st.text_area("SERP Data Log", value=serp_log, height=300, key="serp_log")
+        # Debugging: Log the number of keywords being processed
+        st.write(f"Debug: Fetching SERP results for {len(st.session_state.all_keywords)} keywords...")
 
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
             st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
             progress_bar.progress(0.8)
             status_text.text("Fetching SERP results...")
+
+        # Debugging: Log the contents of serp_results
+        st.write("Debug: SERP Results Dictionary")
+        st.write(st.session_state.serp_results)
+
+        # Log SERP data in a collapsible box (for inspection only)
+        with st.expander("View Scraped SERP Data (Sample)"):
+            serp_log = format_serp_data_for_logging(st.session_state.serp_results)
+            st.text_area("SERP Data Log", value=serp_log, height=300, key="serp_log")
 
         # Step 5: Analyze keywords with Gemini
         if st.session_state.serp_results:
