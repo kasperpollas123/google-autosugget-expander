@@ -99,11 +99,22 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Append alphabet letters to each keyword
     all_keywords = append_alphabet(all_keywords)
 
-    # Fetch autosuggest keywords for the expanded list
-    expanded_keywords = fetch_keywords_concurrently(all_keywords, st.progress(0), st.empty(), max_keywords=max_keywords)
+    # Universal modifiers (smaller set for better relevance)
+    universal_modifiers = [
+        "how to", "why is", "what is", "where to",
+        "buy", "hire", "find", "near me",
+        "best", "affordable", "top",
+        "emergency", "24/7",
+        "near me", "local"
+    ]
 
-    # Combine all keywords
-    all_keywords.update(expanded_keywords)
+    # Apply universal modifiers to the seed keyword and filtered keywords
+    for modifier in universal_modifiers:
+        all_keywords.add(f"{modifier} {seed_keyword}")
+        all_keywords.add(f"{seed_keyword} {modifier}")
+        for keyword in filtered_keywords:
+            all_keywords.add(f"{modifier} {keyword}")
+            all_keywords.add(f"{keyword} {modifier}")
 
     # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
     filtered_keywords = set()
@@ -207,7 +218,7 @@ with st.sidebar:
     query = st.text_input("Enter a seed keyword:")
     st.markdown("---")
     st.markdown("**Instructions:**")
-    st.markdown("1. Enter a seed keyword (e.g., 'guitar').")
+    st.markdown("1. Enter a seed keyword (e.g., 'AI').")
     st.markdown("2. The app will fetch autosuggest keywords.")
     st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
