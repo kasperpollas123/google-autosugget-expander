@@ -135,6 +135,13 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
     chat_input = "Here is the list of keywords:\n"
     chat_input += "\n".join(keywords)
 
+    # Log the full prompt sent to Gemini
+    with st.expander("Full Prompt Sent to Gemini"):
+        st.write("**System Instructions:**")
+        st.write(prompt)
+        st.write("**Keywords Passed to Gemini:**")
+        st.write(keywords)
+
     # Configure Gemini generation settings
     generation_config = {
         "temperature": 1,  # Higher temperature for more creative outputs
