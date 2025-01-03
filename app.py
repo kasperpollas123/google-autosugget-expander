@@ -8,13 +8,30 @@ from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
 import google.generativeai as genai
 from google.api_core import retry
+import random
 
-# Oxylabs proxy endpoint
-PROXY_USER = "customer-kasperpollas12345_Lyt6m-cc-us"
-PROXY_PASS = "Snaksnak12345+"
-PROXY_HOST = "pr.oxylabs.io"
-PROXY_PORT = "7777"
-PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+# List of Oxylabs proxy endpoints
+PROXY_ENDPOINTS = [
+    {
+        "user": "customer-kasperpollas12345_Lyt6m-cc-us",
+        "password": "Snaksnak12345+",
+        "host": "pr.oxylabs.io",
+        "port": "7777",
+    },
+    {
+        "user": "kasperpollas_EImZC-cc-us",
+        "password": "L6mFKak8Uz286dC+",
+        "host": "pr.oxylabs.io",
+        "port": "7777",
+    },
+]
+
+# Function to get a random proxy endpoint
+def get_random_proxy():
+    proxy = random.choice(PROXY_ENDPOINTS)
+    proxy_url = f"http://{proxy['user']}:{proxy['password']}@{proxy['host']}:{proxy['port']}"
+    print(f"Using proxy: {proxy_url}")  # Log the proxy being used
+    return proxy_url
 
 # Google Gemini API key
 GEMINI_API_KEY = "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y"
@@ -30,18 +47,20 @@ def get_autosuggest(query, max_retries=3):
         "q": query,
         "client": "chrome",
     }
-    proxies = {
-        "http": PROXY_URL,
-        "https": PROXY_URL,
-    }
     for attempt in range(max_retries):
         try:
-            response = requests.get(url, params=params, proxies=proxies)
+            # Use a random proxy for each request
+            proxies = {
+                "http": get_random_proxy(),
+                "https": get_random_proxy(),
+            }
+            response = requests.get(url, params=params, proxies=proxies, timeout=30)
             response.raise_for_status()
             return response.json()[1]
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
-                time.sleep(1)
+                st.warning(f"Attempt {attempt + 1} failed for '{query}': {e}. Retrying...")
+                time.sleep(1)  # Wait before retrying
             else:
                 st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
     return []
@@ -76,13 +95,14 @@ def fetch_google_serp(query, limit=5, retries=3):
     url = f"https://www.google.com/search?q={query}"
     for attempt in range(retries):
         try:
+            # Use a random proxy for each request
             proxies = {
-                "http": PROXY_URL,
-                "https": PROXY_URL,
+                "http": get_random_proxy(),
+                "https": get_random_proxy(),
             }
             session = requests.Session()
             session.cookies.clear()
-            response = session.get(url, proxies=proxies)
+            response = session.get(url, proxies=proxies, timeout=30)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
