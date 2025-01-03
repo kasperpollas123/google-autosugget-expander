@@ -283,7 +283,8 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
         return None
 
 # Streamlit UI
-st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
+# Remove the main title
+# st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
 
 # Initialize session state to store keywords and SERP results
 if "all_keywords" not in st.session_state:
@@ -295,7 +296,7 @@ if "gemini_output" not in st.session_state:
 
 # Sidebar for user input and settings
 with st.sidebar:
-    st.header("Settings")
+    st.header("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")  # Replace "Settings" with the new title
     query = st.text_input("Enter a seed keyword:")
     st.markdown("---")
     st.markdown("**Instructions:**")
@@ -305,8 +306,8 @@ with st.sidebar:
 
 # Main content
 if query:
-    # Initialize progress bar and status text
-    progress_bar = st.progress(0)
+    # Initialize progress bar and status text (hidden from UI)
+    progress_bar = st.empty()
     status_text = st.empty()
 
     # Step 1: Fetch initial autosuggest keywords
@@ -331,7 +332,7 @@ if query:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
-        # Debugging: Log the number of keywords being processed
+        # Debugging: Log the number of keywords being processed (hidden from UI)
         st.write(f"Debug: Fetching SERP results for {len(st.session_state.all_keywords)} keywords...")
 
         with st.spinner("Fetching SERP results for each keyword concurrently..."):
@@ -339,11 +340,11 @@ if query:
             progress_bar.progress(0.8)
             status_text.text("Fetching SERP results...")
 
-        # Debugging: Log the contents of serp_results
+        # Debugging: Log the contents of serp_results (hidden from UI)
         st.write("Debug: SERP Results Dictionary")
         st.write(st.session_state.serp_results)
 
-        # Log SERP data in a collapsible box (for inspection only)
+        # Log SERP data in a collapsible box (hidden from UI)
         with st.expander("View Scraped SERP Data (Sample)"):
             serp_log = format_serp_data_for_logging(st.session_state.serp_results)
             st.text_area("SERP Data Log", value=serp_log, height=300, key="serp_log")
