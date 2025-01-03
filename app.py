@@ -68,7 +68,7 @@ def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
 
 # Function to generate expanded keyword variations
-def generate_expanded_keywords(seed_keyword, max_keywords=500):
+def generate_expanded_keywords(seed_keyword):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
 
@@ -119,11 +119,10 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
         if not any(is_similar(kw, existing_kw) for existing_kw in unique_keywords):
             unique_keywords.append(kw)
 
-    # Limit the number of keywords
-    return unique_keywords[:max_keywords]
+    return unique_keywords
 
 # Function to fetch keywords concurrently using multi-threading
-def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
+def fetch_keywords_concurrently(queries, progress_bar, status_text):
     all_keywords = set()
     with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in queries}
@@ -135,11 +134,9 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords
                 progress_value = i / len(queries)
                 progress_bar.progress(min(progress_value, 1.0))
                 status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
-                if len(all_keywords) >= max_keywords:
-                    break  # Stop fetching once the maximum limit is reached
             except Exception as e:
                 st.error(f"Error fetching keywords: {e}")
-    return list(all_keywords)[:max_keywords]
+    return list(all_keywords)
 
 # Function to analyze keywords with Gemini (only keywords, no SERP data)
 def analyze_keywords_with_gemini(keywords, seed_keyword):
@@ -223,11 +220,11 @@ if query:
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query, max_keywords=500)
+    expanded_keywords = generate_expanded_keywords(query)
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
-        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text, max_keywords=500))
+        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text))
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
