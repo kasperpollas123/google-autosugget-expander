@@ -117,11 +117,9 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
 
     **Rules:**
     1. Include keywords that are related or tangentially relevant to the seed keyword: '{seed_keyword}'.
-    2. Remove only keywords that are completely irrelevant, overly generic, or unclear in intent.
-    3. Consolidate similar keywords into a single representative keyword only if they are nearly identical.
-    4. Limit each group to a maximum of 20 keywords.
-    5. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
-    6. Ensure all keywords are grouped into relevant themes. If necessary, create an "Other" group for slightly less relevant but still useful keywords.
+    2. Limit each group to a maximum of 20 keywords.
+    3. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
+    4. Ensure all keywords are grouped into relevant themes. If necessary, create an "Other" group for slightly less relevant but still useful keywords.
 
     The final output should look EXACTLY like this:
 
