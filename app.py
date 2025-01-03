@@ -14,7 +14,7 @@ import os
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
 
-# Oxylabs proxy endpoint
+# Oxylabs proxy endpoint (only for autosuggest)
 PROXY_USER = os.getenv("PROXY_USER", "customer-kasperpollas12345_Lyt6m-cc-us")
 PROXY_PASS = os.getenv("PROXY_PASS", "Snaksnak12345+")
 PROXY_HOST = os.getenv("PROXY_HOST", "pr.oxylabs.io")
@@ -28,7 +28,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 # Initialize Gemini model (Updated to use Gemini 1.5 Pro)
 gemini_model = genai.GenerativeModel('gemini-1.5-pro')
 
-# Function to fetch Google autosuggest keywords with retries
+# Function to fetch Google autosuggest keywords with retries (uses proxy)
 def get_autosuggest(query, max_retries=3):
     url = "https://www.google.com/complete/search"
     params = {
@@ -124,18 +124,14 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch and parse Google SERP (limit to 3 results)
+# Function to fetch and parse Google SERP (limit to 3 results, no proxy)
 def fetch_google_serp(query, limit=3, retries=3):
     url = f"https://www.google.com/search?q={query}"
     for attempt in range(retries):
         try:
-            proxies = {
-                "http": PROXY_URL,
-                "https": PROXY_URL,
-            }
             session = requests.Session()
             session.cookies.clear()
-            response = session.get(url, proxies=proxies)
+            response = session.get(url)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
@@ -162,12 +158,6 @@ def fetch_google_serp(query, limit=3, retries=3):
                     return f"Error: Rate limit exceeded for '{query}'."
             else:
                 return f"Error: Unable to fetch SERP for '{query}'. Status code: {response.status_code}"
-        except ProxyError as e:
-            if attempt < retries - 1:
-                time.sleep(5)
-                continue
-            else:
-                return f"Proxy error occurred for '{query}': {e}"
         except Exception as e:
             return f"An error occurred for '{query}': {e}"
     return f"Error: Max retries reached for '{query}'."
@@ -191,7 +181,7 @@ def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords
                 st.error(f"Error fetching keywords: {e}")
     return list(all_keywords)[:max_keywords]
 
-# Function to fetch SERP results concurrently
+# Function to fetch SERP results concurrently (no proxy)
 def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
     serp_results = {}
     with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
@@ -308,7 +298,7 @@ if query:
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP results for each keyword concurrently
+    # Step 4: Fetch SERP results for each keyword concurrently (no proxy)
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
