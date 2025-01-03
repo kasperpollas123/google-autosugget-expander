@@ -24,6 +24,12 @@ PROXY_ENDPOINTS = [
         "host": "pr.oxylabs.io",
         "port": "7777",
     },
+    {
+        "user": "kasperpollasletsgo123-cc-us",
+        "password": "Akkkk11jrk34j+",
+        "host": "pr.oxylabs.io",
+        "port": "7777",
+    },
 ]
 
 # Function to get a random proxy endpoint
