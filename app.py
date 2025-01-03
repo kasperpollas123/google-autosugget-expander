@@ -148,15 +148,35 @@ def fetch_bing_serp(query, limit=3, retries=3):
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'lxml')
                 results = []
-                for result in soup.find_all('li', class_='b_algo')[:limit]:
+                
+                # Find all organic search result containers (class="b_algo")
+                organic_results = soup.find_all('li', class_='b_algo')[:limit]
+                
+                for result in organic_results:
+                    # Extract title (usually inside h2 > a)
                     title_element = result.find('h2')
-                    title = title_element.get_text().strip() if title_element else "No Title Found"
-                    description_element = result.find('p')
-                    description = description_element.get_text().strip() if description_element else "No Description Found"
+                    if title_element:
+                        title = title_element.find('a').get_text(strip=True) if title_element.find('a') else "No Title Found"
+                    else:
+                        title = "No Title Found"
+                    
+                    # Extract description (usually inside p or div with class="b_caption")
+                    description_element = result.find('p') or result.find('div', class_='b_caption')
+                    if description_element:
+                        description = description_element.get_text(strip=True)
+                    else:
+                        description = "No Description Found"
+                    
+                    # Append the result to the list
                     results.append({
                         "title": title,
                         "description": description
                     })
+                
+                # Handle cases where fewer than 3 results are found
+                if len(results) < limit:
+                    print(f"Warning: Only {len(results)} organic results found for query: {query}.")
+                
                 return results
             elif response.status_code == 429:
                 if attempt < retries - 1:
