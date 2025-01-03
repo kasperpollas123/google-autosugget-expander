@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import time
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from requests.exceptions import ProxyError
@@ -10,11 +9,7 @@ from google.api_core import retry
 import nltk
 from nltk.corpus import wordnet
 from difflib import SequenceMatcher
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from PIL import Image
+import os
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
@@ -129,49 +124,89 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to take a screenshot of a Google SERP
-def take_screenshot(query, output_file="serp_screenshot.png"):
-    # Set up Selenium WebDriver with proxy
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run in headless mode
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1200,800")  # Set window size
-    chrome_options.add_argument(f"--proxy-server={PROXY_URL}")  # Use proxy
+# Function to fetch and parse Google SERP (limit to 3 results, uses proxy)
+def fetch_google_serp(query, limit=3, retries=3):
+    url = f"https://www.google.com/search?q={query}"
+    proxies = {
+        "http": PROXY_URL,
+        "https": PROXY_URL,
+    }
+    for attempt in range(retries):
+        try:
+            session = requests.Session()
+            session.cookies.clear()
+            response = session.get(url, proxies=proxies)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'lxml')
+                results = []
+                for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
+                    if "ads" in result.get("class", []):
+                        continue
+                    title_element = result.find('h3') or result.find('h2') or result.find('div', class_='BNeawe vvjwJb AP7Wnd')
+                    title = title_element.get_text().strip() if title_element else "No Title Found"
+                    description_element = result.find('div', class_='BNeawe s3v9rd AP7Wnd') or \
+                                         result.find('div', class_='v9i61e') or \
+                                         result.find('div', class_='BNeawe UPmit AP7Wnd lRVwie') or \
+                                         result.find('div', class_='BNeawe s3v9rd AP7Wnd')
+                    description = description_element.get_text().strip() if description_element else "No Description Found"
+                    results.append({
+                        "title": title,
+                        "description": description
+                    })
+                return results
+            elif response.status_code == 429:
+                if attempt < retries - 1:
+                    time.sleep(10)
+                    continue
+                else:
+                    return f"Error: Rate limit exceeded for '{query}'."
+            else:
+                return f"Error: Unable to fetch SERP for '{query}'. Status code: {response.status_code}"
+        except ProxyError as e:
+            if attempt < retries - 1:
+                time.sleep(5)
+                continue
+            else:
+                return f"Proxy error occurred for '{query}': {e}"
+        except Exception as e:
+            return f"An error occurred for '{query}': {e}"
+    return f"Error: Max retries reached for '{query}'."
 
-    # Initialize the WebDriver
-    driver = webdriver.Chrome(service=Service(), options=chrome_options)
+# Function to fetch keywords concurrently using multi-threading
+def fetch_keywords_concurrently(queries, progress_bar, status_text, max_keywords=500):
+    all_keywords = set()
+    with ThreadPoolExecutor(max_workers=500) as executor:
+        futures = {executor.submit(get_autosuggest, query): query for query in queries}
+        for i, future in enumerate(as_completed(futures), start=1):
+            try:
+                keywords = future.result()
+                if keywords:
+                    all_keywords.update(keywords)
+                progress_value = i / len(queries)
+                progress_bar.progress(min(progress_value, 1.0))
+                status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
+                if len(all_keywords) >= max_keywords:
+                    break  # Stop fetching once the maximum limit is reached
+            except Exception as e:
+                st.error(f"Error fetching keywords: {e}")
+    return list(all_keywords)[:max_keywords]
 
-    try:
-        # Load Google SERP
-        driver.get(f"https://www.google.com/search?q={query}")
-        time.sleep(2)  # Wait for the page to load
-
-        # Take a screenshot
-        driver.save_screenshot(output_file)
-        return output_file
-    except Exception as e:
-        st.error(f"Error taking screenshot for '{query}': {e}")
-        return None
-    finally:
-        driver.quit()
-
-# Function to fetch SERP results concurrently (uses Selenium for screenshots)
+# Function to fetch SERP results concurrently (uses proxy)
 def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
-    serp_screenshots = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:  # Reduced max_workers for stability
-        futures = {executor.submit(take_screenshot, keyword): keyword for keyword in keywords}
+    serp_results = {}
+    with ThreadPoolExecutor(max_workers=500) as executor:  # Adjust max_workers as needed
+        futures = {executor.submit(fetch_google_serp, keyword): keyword for keyword in keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             keyword = futures[future]
             try:
-                screenshot_path = future.result()
-                if screenshot_path:
-                    serp_screenshots[keyword] = screenshot_path
+                result = future.result()
+                serp_results[keyword] = result
                 progress_value = i / len(keywords)
                 progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Fetching SERP screenshots: {i}/{len(keywords)} completed")
+                status_text.text(f"Fetching SERP results: {i}/{len(keywords)} completed")
             except Exception as e:
-                st.error(f"Error fetching SERP screenshot for '{keyword}': {e}")
-    return serp_screenshots
+                st.error(f"Error fetching SERP results for '{keyword}': {e}")
+    return serp_results
 
 # Function to format SERP data for logging
 def format_serp_data_for_logging(serp_results):
@@ -244,13 +279,13 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
         return None
 
 # Streamlit UI
-st.title("Google Autosuggest Keyword Fetcher with SERP Screenshots and Gemini Analysis")
+st.title("Google Autosuggest Keyword Fetcher with SERP Results and Gemini Analysis")
 
 # Initialize session state to store keywords and SERP results
 if "all_keywords" not in st.session_state:
     st.session_state.all_keywords = set()
-if "serp_screenshots" not in st.session_state:
-    st.session_state.serp_screenshots = {}
+if "serp_results" not in st.session_state:
+    st.session_state.serp_results = {}
 if "gemini_output" not in st.session_state:
     st.session_state.gemini_output = None
 
@@ -261,7 +296,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Instructions:**")
     st.markdown("1. Enter a seed keyword (e.g., 'AI').")
-    st.markdown("2. The app will fetch autosuggest keywords and SERP screenshots.")
+    st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
     st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
 # Main content
@@ -287,30 +322,55 @@ if query:
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
-    # Step 4: Fetch SERP screenshots for each keyword concurrently
+    # Step 4: Fetch SERP results for each keyword concurrently (uses proxy)
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
 
         # Debugging: Log the number of keywords being processed
-        st.write(f"Debug: Fetching SERP screenshots for {len(st.session_state.all_keywords)} keywords...")
+        st.write(f"Debug: Fetching SERP results for {len(st.session_state.all_keywords)} keywords...")
 
-        with st.spinner("Fetching SERP screenshots for each keyword concurrently..."):
-            st.session_state.serp_screenshots = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
+        with st.spinner("Fetching SERP results for each keyword concurrently..."):
+            st.session_state.serp_results = fetch_serp_results_concurrently(st.session_state.all_keywords, progress_bar, status_text)
             progress_bar.progress(0.8)
-            status_text.text("Fetching SERP screenshots...")
+            status_text.text("Fetching SERP results...")
 
-        # Display the screenshots
-        if st.session_state.serp_screenshots:
-            st.success("Screenshots fetched successfully!")
-            for keyword, screenshot_path in st.session_state.serp_screenshots.items():
-                st.subheader(f"Keyword: {keyword}")
-                st.image(Image.open(screenshot_path), caption=f"SERP for '{keyword}'", use_column_width=True)
-        else:
-            st.write("No screenshots found.")
+        # Debugging: Log the contents of serp_results
+        st.write("Debug: SERP Results Dictionary")
+        st.write(st.session_state.serp_results)
+
+        # Log SERP data in a collapsible box (for inspection only)
+        with st.expander("View Scraped SERP Data (Sample)"):
+            serp_log = format_serp_data_for_logging(st.session_state.serp_results)
+            st.text_area("SERP Data Log", value=serp_log, height=300, key="serp_log")
+
+        # Step 5: Analyze keywords with Gemini
+        if st.session_state.serp_results:
+            with st.spinner("Analyzing keywords with Gemini..."):
+                st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, st.session_state.serp_results, query)
+                progress_bar.progress(1.0)
+                status_text.text("Analysis complete!")
+
+        # Display Gemini output as collapsible cards
+        if st.session_state.gemini_output:
+            st.subheader("Keyword Themes and Groups")
+            
+            # Split the Gemini output into individual themes
+            themes = st.session_state.gemini_output.strip().split("\n\n")
+            
+            for theme in themes:
+                if theme.strip():  # Ensure the theme is not empty
+                    # Split the theme into its name and keywords
+                    theme_lines = theme.strip().split("\n")
+                    theme_name = theme_lines[0]  # The first line is the theme name
+                    theme_keywords = "\n".join(theme_lines[1:])  # The rest are keywords
+                    
+                    # Display the theme as a collapsible card
+                    with st.expander(theme_name):
+                        st.markdown(theme_keywords)
     else:
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = set()
-    st.session_state.serp_screenshots = {}
+    st.session_state.serp_results = {}
     st.session_state.gemini_output = None
