@@ -278,7 +278,7 @@ with st.sidebar:
     query = st.text_input("Enter a seed keyword:")
     st.markdown("---")
     st.markdown("**Instructions:**")
-    st.markdown("1. Enter a seed keyword (e.g., 'panic attack').")
+    st.markdown("1. Enter a seed keyword (e.g., 'marketing').")
     st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
     st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
