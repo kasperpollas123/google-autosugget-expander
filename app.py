@@ -355,7 +355,7 @@ if query:
                 progress_bar.progress(1.0)
                 status_text.text("Analysis complete!")
 
-        # Display Gemini output as squared cards in a 3-column grid
+        # Display Gemini output as collapsible cards in a 3-column grid
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
             
@@ -389,24 +389,24 @@ if query:
                         else:
                             current_col = col3
                         
-                        # Display the theme as a squared card
+                        # Display the theme as a collapsible card
                         with current_col:
-                            st.markdown(
-                                f"""
-                                <div style="
-                                    padding: 10px;
-                                    border: 1px solid #ddd;
-                                    border-radius: 10px;
-                                    background-color: #f9f9f9;
-                                    height: 250px;  # Fixed height for squared cards
-                                    overflow-y: auto;  # Add scroll if content overflows
-                                ">
-                                    <h4>{theme_name}</h4>
-                                    <pre style="white-space: pre-wrap;">{theme_keywords}</pre>
-                                </div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
+                            with st.expander(theme_name):
+                                st.markdown(
+                                    f"""
+                                    <div style="
+                                        padding: 10px;
+                                        border: 1px solid #ddd;
+                                        border-radius: 10px;
+                                        background-color: #f9f9f9;
+                                        height: 250px;  # Fixed height for squared cards
+                                        overflow-y: auto;  # Add scroll if content overflows
+                                    ">
+                                        <pre style="white-space: pre-wrap;">{theme_keywords}</pre>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True,
+                                )
                         
                         # Increment the card counter
                         card_counter += 1
