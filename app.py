@@ -10,8 +10,6 @@ import nltk
 from nltk.corpus import wordnet
 from difflib import SequenceMatcher
 import os
-import gzip
-import io
 
 # Download WordNet data (only needed once)
 nltk.download('wordnet')
@@ -126,35 +124,20 @@ def generate_expanded_keywords(seed_keyword, max_keywords=500):
     # Limit the number of keywords
     return unique_keywords[:max_keywords]
 
-# Function to fetch and parse Google SERP with gzip compression
+# Function to fetch and parse Google SERP (limit to 3 results, uses proxy)
 def fetch_google_serp(query, limit=3, retries=3):
     url = f"https://www.google.com/search?q={query}"
     proxies = {
         "http": PROXY_URL,
         "https": PROXY_URL,
     }
-    headers = {
-        "Accept-Encoding": "gzip",  # Request gzip-compressed response
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    
     for attempt in range(retries):
         try:
             session = requests.Session()
             session.cookies.clear()
-            response = session.get(url, proxies=proxies, headers=headers)
-            
+            response = session.get(url, proxies=proxies)
             if response.status_code == 200:
-                # Check if the response is gzip-compressed
-                if response.headers.get('Content-Encoding') == 'gzip':
-                    # Decompress the response
-                    compressed_data = io.BytesIO(response.content)
-                    decompressed_data = gzip.GzipFile(fileobj=compressed_data).read()
-                    html = decompressed_data.decode('utf-8')
-                else:
-                    html = response.text
-                
-                soup = BeautifulSoup(html, 'lxml')
+                soup = BeautifulSoup(response.text, 'lxml')
                 results = []
                 for result in soup.find_all('div', class_='Gx5Zad xpd EtOod pkphOe')[:limit]:
                     if "ads" in result.get("class", []):
