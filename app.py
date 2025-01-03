@@ -4,13 +4,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import google.generativeai as genai
 from google.api_core import retry
-import nltk
-from nltk.corpus import wordnet
 from difflib import SequenceMatcher
 import os
-
-# Download WordNet data (only needed once)
-nltk.download('wordnet')
 
 # Oxylabs proxy endpoint
 PROXY_USER = os.getenv("PROXY_USER", "customer-kasperpollas12345_Lyt6m-cc-us")
@@ -49,31 +44,14 @@ def get_autosuggest(query, max_retries=3):
                 st.error(f"Error fetching autosuggest keywords for '{query}': {e}")
     return []
 
-# Function to fetch synonyms using WordNet
-def get_synonyms(word):
-    synonyms = set()
-    for syn in wordnet.synsets(word):
-        for lemma in syn.lemmas():
-            synonyms.add(lemma.name())
-    return list(synonyms)
-
 # Function to check if two keywords are too similar
 def is_similar(keyword1, keyword2, threshold=0.8):
     return SequenceMatcher(None, keyword1, keyword2).ratio() >= threshold
 
-# Function to generate expanded keyword variations
+# Function to generate expanded keyword variations (Level 1)
 def generate_expanded_keywords(seed_keyword):
     # Fetch Level 1 autosuggest keywords
     level1_keywords = get_autosuggest(seed_keyword)
-
-    # Fetch synonyms for the seed keyword
-    synonyms = get_synonyms(seed_keyword)
-
-    # Combine all keywords
-    all_keywords = set()
-    all_keywords.add(seed_keyword)
-    all_keywords.update(level1_keywords)
-    all_keywords.update(synonyms)
 
     # Universal modifiers
     universal_modifiers = [
@@ -87,18 +65,18 @@ def generate_expanded_keywords(seed_keyword):
     # Alphabet modifiers (A-Z)
     alphabet_modifiers = [chr(i) for i in range(ord('a'), ord('z') + 1)]
 
-    # Apply universal modifiers to the seed keyword and filtered keywords
+    # Combine all keywords
+    all_keywords = set()
+    all_keywords.add(seed_keyword)
+    all_keywords.update(level1_keywords)
+
+    # Apply universal modifiers to the seed keyword
     for modifier in universal_modifiers:
-        all_keywords.add(f"{modifier} {seed_keyword}")
         all_keywords.add(f"{seed_keyword} {modifier}")
-        for keyword in level1_keywords:
-            all_keywords.add(f"{modifier} {keyword}")
-            all_keywords.add(f"{keyword} {modifier}")
 
     # Apply alphabet modifiers to the seed keyword
     for letter in alphabet_modifiers:
         all_keywords.add(f"{seed_keyword} {letter}")
-        all_keywords.add(f"{letter} {seed_keyword}")
 
     # Remove duplicate keywords
     unique_keywords = []
@@ -108,21 +86,21 @@ def generate_expanded_keywords(seed_keyword):
 
     return unique_keywords
 
-# Function to fetch keywords concurrently using multi-threading
-def fetch_keywords_concurrently(queries, progress_bar, status_text):
+# Function to generate Level 2 keywords
+def generate_level2_keywords(level1_keywords, progress_bar, status_text):
     all_keywords = set()
     with ThreadPoolExecutor(max_workers=500) as executor:
-        futures = {executor.submit(get_autosuggest, query): query for query in queries}
+        futures = {executor.submit(get_autosuggest, query): query for query in level1_keywords}
         for i, future in enumerate(as_completed(futures), start=1):
             try:
                 keywords = future.result()
                 if keywords:
                     all_keywords.update(keywords)
-                progress_value = i / len(queries)
+                progress_value = i / len(level1_keywords)
                 progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
+                status_text.text(f"Fetching Level 2 keywords: {i}/{len(level1_keywords)} completed")
             except Exception as e:
-                st.error(f"Error fetching keywords: {e}")
+                st.error(f"Error fetching Level 2 keywords: {e}")
     return list(all_keywords)
 
 # Function to analyze keywords with Gemini (only keywords, no SERP data)
@@ -206,14 +184,15 @@ if query:
         progress_bar.progress(0.2)
         status_text.text("Fetching initial autosuggest keywords...")
 
-    # Step 2: Generate expanded keyword variations
+    # Step 2: Generate expanded keyword variations (Level 1)
     expanded_keywords = generate_expanded_keywords(query)
 
-    # Step 3: Fetch autosuggest keywords concurrently
-    with st.spinner("Fetching autosuggest keywords concurrently..."):
-        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text))
+    # Step 3: Fetch Level 2 keywords
+    with st.spinner("Fetching Level 2 keywords..."):
+        level2_keywords = generate_level2_keywords(expanded_keywords, progress_bar, status_text)
+        st.session_state.all_keywords.update(level2_keywords)
         progress_bar.progress(0.5)
-        status_text.text("Fetching expanded autosuggest keywords...")
+        status_text.text("Fetching Level 2 keywords...")
 
     # Step 4: Analyze keywords with Gemini
     if st.session_state.all_keywords:
