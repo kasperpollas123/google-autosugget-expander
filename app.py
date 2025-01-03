@@ -77,16 +77,16 @@ def generate_expanded_keywords(seed_keyword):
     all_keywords.update(level2_keywords)
     all_keywords.update(synonyms)
 
-    # Universal modifiers
+    # Universal modifiers (smaller set for better relevance)
     universal_modifiers = [
         # Question-based
-        "how to", "why is", "what is", "where to", "when to", "who is",
+        "how to", "why is", "what is", "where to",
         # Intent-based
-        "guide to", "tips for", "benefits of", "buy", "hire", "find", "order", "near me", "website", "location",
+        "buy", "hire", "find", "near me",
         # Quality-based
-        "best", "cheap", "affordable", "top", "reliable",
+        "best", "affordable", "top",
         # Time-based
-        "emergency", "24/7", "quick", "fast",
+        "emergency", "24/7",
         # Location-based
         "near me", "local"
     ]
@@ -102,27 +102,21 @@ def generate_expanded_keywords(seed_keyword):
             all_keywords.add(f"{modifier} {synonym}")
             all_keywords.add(f"{synonym} {modifier}")
 
-    return list(all_keywords)
+    # Filter out irrelevant keywords (must contain the seed keyword or its synonyms)
+    filtered_keywords = set()
+    for keyword in all_keywords:
+        if seed_keyword.lower() in keyword.lower():
+            filtered_keywords.add(keyword)
+        else:
+            for synonym in synonyms:
+                if synonym.lower() in keyword.lower():
+                    filtered_keywords.add(keyword)
+                    break
 
-# Function to fetch keywords concurrently using multi-threading
-def fetch_keywords_concurrently(queries, progress_bar, status_text):
-    all_keywords = set()
-    with ThreadPoolExecutor(max_workers=500) as executor:
-        futures = {executor.submit(get_autosuggest, query): query for query in queries}
-        for i, future in enumerate(as_completed(futures), start=1):
-            try:
-                keywords = future.result()
-                if keywords:
-                    all_keywords.update(keywords)
-                progress_value = i / len(queries)
-                progress_bar.progress(min(progress_value, 1.0))
-                status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
-            except Exception as e:
-                st.error(f"Error fetching keywords: {e}")
-    return all_keywords
+    return list(filtered_keywords)
 
-# Function to fetch and parse Google SERP
-def fetch_google_serp(query, limit=5, retries=3):
+# Function to fetch and parse Google SERP (limit to 3 results)
+def fetch_google_serp(query, limit=3, retries=3):
     url = f"https://www.google.com/search?q={query}"
     for attempt in range(retries):
         try:
@@ -168,6 +162,23 @@ def fetch_google_serp(query, limit=5, retries=3):
         except Exception as e:
             return f"An error occurred for '{query}': {e}"
     return f"Error: Max retries reached for '{query}'."
+
+# Function to fetch keywords concurrently using multi-threading
+def fetch_keywords_concurrently(queries, progress_bar, status_text):
+    all_keywords = set()
+    with ThreadPoolExecutor(max_workers=500) as executor:
+        futures = {executor.submit(get_autosuggest, query): query for query in queries}
+        for i, future in enumerate(as_completed(futures), start=1):
+            try:
+                keywords = future.result()
+                if keywords:
+                    all_keywords.update(keywords)
+                progress_value = i / len(queries)
+                progress_bar.progress(min(progress_value, 1.0))
+                status_text.text(f"Fetching autosuggest keywords: {i}/{len(queries)} completed")
+            except Exception as e:
+                st.error(f"Error fetching keywords: {e}")
+    return all_keywords
 
 # Function to fetch SERP results concurrently
 def fetch_serp_results_concurrently(keywords, progress_bar, status_text):
