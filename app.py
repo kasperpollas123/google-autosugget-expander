@@ -139,14 +139,24 @@ def fetch_google_serp(query, limit=3, retries=3):
             if response.status_code == 200:
                 tree = html.fromstring(response.text)  # Use lxml to parse HTML
                 results = []
+                # Focus on organic results (divs with class "Gx5Zad xpd EtOod pkphOe")
                 for result in tree.xpath('//div[@class="Gx5Zad xpd EtOod pkphOe"]')[:limit]:
+                    # Skip YouTube results
+                    if result.xpath('.//span[contains(text(), "YouTube")]'):
+                        continue
+                    
+                    # Extract title
                     title_element = result.xpath('.//h3 | .//h2 | .//div[contains(@class, "BNeawe vvjwJb AP7Wnd")]')
                     title = title_element[0].text_content().strip() if title_element else "No Title Found"
+                    
+                    # Extract description
                     description_element = result.xpath('.//div[contains(@class, "BNeawe s3v9rd AP7Wnd")] | '
                                                       './/div[contains(@class, "v9i61e")] | '
                                                       './/div[contains(@class, "BNeawe UPmit AP7Wnd lRVwie")] | '
                                                       './/div[contains(@class, "BNeawe s3v9rd AP7Wnd")]')
                     description = description_element[0].text_content().strip() if description_element else "No Description Found"
+                    
+                    # Add to results
                     results.append({
                         "title": title,
                         "description": description
