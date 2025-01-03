@@ -4,3 +4,4 @@ beautifulsoup4
 lxml
 pandas
 google-generativeai
+aiohttp
