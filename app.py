@@ -23,8 +23,8 @@ PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y")
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize Gemini model (Updated to use Gemini 1.5 Pro)
-gemini_model = genai.GenerativeModel('gemini-1.5-pro')
+# Initialize Gemini model (Switched to Gemini 1.5 Flash)
+gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Function to fetch Google autosuggest keywords with retries (uses proxy)
 def get_autosuggest(query, max_retries=3):
