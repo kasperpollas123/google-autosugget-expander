@@ -212,7 +212,7 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword):
     Please analyze the intent for all of the keywords on this list based on the SERP page results for each keyword. Then come up with different themes that keywords can be grouped under. 
 
     **Rules:**
-    1. Only include keywords that are closely related to the seed keyword: '{seed_keyword}'.
+    1. Only include keywords that are closely related to the seed keyword: '{seed_keyword}' (artificial intelligence).
     2. Remove keywords that are too generic, irrelevant, or unclear in intent.
     3. Consolidate similar keywords into a single representative keyword.
     4. Limit each group to a maximum of 10 keywords.
@@ -278,7 +278,7 @@ with st.sidebar:
     query = st.text_input("Enter a seed keyword:")
     st.markdown("---")
     st.markdown("**Instructions:**")
-    st.markdown("1. Enter a seed keyword (e.g., 'marketing').")
+    st.markdown("1. Enter a seed keyword (e.g., 'AI').")
     st.markdown("2. The app will fetch autosuggest keywords and SERP results.")
     st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
 
