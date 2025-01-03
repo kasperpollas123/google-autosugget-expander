@@ -111,7 +111,7 @@ def generate_level2_keywords(level1_keywords, progress_bar, status_text):
 
 # Function to analyze keywords with Gemini (only keywords, no SERP data)
 def analyze_keywords_with_gemini(keywords, seed_keyword):
-    # System instructions and chat input
+    # Combine system instructions and chat input into a single prompt
     prompt = f"""
     Please analyze the intent for all of the keywords on this list. Then come up with different themes that keywords can be grouped under. 
 
@@ -129,18 +129,14 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
     - keyword 1
     - keyword 2
     - keyword 3
-    """
 
-    # Prepare the chat input for Gemini
-    chat_input = "Here is the list of keywords:\n"
-    chat_input += "\n".join(keywords)
+    Here is the list of keywords:
+    """
+    prompt += "\n".join(keywords)
 
     # Log the full prompt sent to Gemini
     with st.expander("Full Prompt Sent to Gemini"):
-        st.write("**System Instructions:**")
         st.write(prompt)
-        st.write("**Keywords Passed to Gemini:**")
-        st.write(keywords)
 
     # Configure Gemini generation settings
     generation_config = {
@@ -153,7 +149,7 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
     @retry.Retry()
     def call_gemini():
         return gemini_model.generate_content(
-            contents=[prompt, prompt + "\n" + chat_input],  # Pass prompt in both places
+            contents=[prompt],  # Pass the combined prompt as a single input
             generation_config=generation_config,
             request_options={"timeout": 600},  # 10-minute timeout
         )
