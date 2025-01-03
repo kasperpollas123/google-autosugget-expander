@@ -87,13 +87,19 @@ def generate_expanded_keywords(seed_keyword, goal, max_keywords=500):
     all_keywords.update(filtered_keywords)
     all_keywords.update(relevant_synonyms)
 
-    # Universal modifiers (smaller set for better relevance)
+    # Universal modifiers (expanded set for more comprehensive results)
     universal_modifiers = [
-        "how to", "why is", "what is", "where to",
-        "buy", "hire", "find", "near me",
-        "best", "affordable", "top",
-        "emergency", "24/7",
-        "near me", "local"
+        "how to", "why is", "what is", "where to", "when to", "who is", "which is",
+        "buy", "hire", "find", "near me", "online", "cheap", "affordable", "best", "top", "local",
+        "emergency", "24/7", "services", "companies", "providers", "experts", "specialists",
+        "reviews", "ratings", "prices", "cost", "costs", "deals", "discounts", "offers",
+        "guide", "tips", "tricks", "advice", "recommendations", "solutions", "ideas",
+        "nearby", "close to me", "in my area", "in my city", "in my town", "in my state",
+        "for sale", "for rent", "for lease", "for hire", "for purchase", "for business",
+        "for home", "for office", "for commercial", "for residential", "for industrial",
+        "for beginners", "for professionals", "for experts", "for students", "for seniors",
+        "for kids", "for adults", "for families", "for couples", "for individuals",
+        "for small businesses", "for large businesses", "for startups", "for enterprises",
     ]
 
     # Apply universal modifiers to the seed keyword and filtered keywords
@@ -236,7 +242,7 @@ def analyze_keywords_with_gemini(keywords, serp_results, seed_keyword, goal):
     1. Only include keywords that are closely related to the seed keyword: '{seed_keyword}' (artificial intelligence).
     2. Remove keywords that are too generic, irrelevant, or unclear in intent.
     3. Consolidate similar keywords into a single representative keyword.
-    4. Limit each group to a maximum of 10 keywords.
+    4. Limit each group to a maximum of 20 keywords (to ensure comprehensive results).
     5. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
     6. Ensure all keywords are grouped into relevant themes. Do not create an "Other" group.
     7. Focus on keywords that align with the following goal: {goal}.
@@ -322,11 +328,11 @@ if query and goal:  # Ensure both seed keyword and goal are provided
         status_text.text("Fetching initial autosuggest keywords...")
 
     # Step 2: Generate expanded keyword variations
-    expanded_keywords = generate_expanded_keywords(query, goal, max_keywords=500)
+    expanded_keywords = generate_expanded_keywords(query, goal, max_keywords=1000)  # Increased max_keywords to 1000
 
     # Step 3: Fetch autosuggest keywords concurrently
     with st.spinner("Fetching autosuggest keywords concurrently..."):
-        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text, max_keywords=500))
+        st.session_state.all_keywords.update(fetch_keywords_concurrently(expanded_keywords, progress_bar, status_text, max_keywords=1000))  # Increased max_keywords to 1000
         progress_bar.progress(0.5)
         status_text.text("Fetching expanded autosuggest keywords...")
 
