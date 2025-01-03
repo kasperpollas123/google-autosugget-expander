@@ -297,7 +297,7 @@ with st.sidebar:
 # Main content
 if query and goal:  # Ensure both seed keyword and goal are provided
     # Initialize progress bar and status text (hidden from UI)
-    progress_bar = st.empty()
+    progress_bar = st.progress(0)
     status_text = st.empty()
 
     # Step 1: Fetch initial autosuggest keywords
@@ -323,6 +323,16 @@ if query and goal:  # Ensure both seed keyword and goal are provided
             st.session_state.serp_data = fetch_serp_links_and_content(st.session_state.all_keywords)
             progress_bar.progress(0.8)
             status_text.text("Fetching SERP results and scraping content...")
+
+        # Display scraped content in a collapsible box
+        with st.expander("View Scraped Content (Sample)"):
+            for keyword, results in st.session_state.serp_data.items():
+                st.write(f"**Keyword: {keyword}**")
+                for i, result in enumerate(results, start=1):
+                    st.write(f"  **Result {i}:**")
+                    st.write(f"    **Link:** {result['link']}")
+                    st.write(f"    **Content:** {result['content'][:500]}...")  # Show first 500 characters of content
+                st.write("---")
 
         # Step 5: Analyze keywords with Gemini
         if st.session_state.serp_data:
