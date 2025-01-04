@@ -91,7 +91,7 @@ def generate_expanded_keywords(seed_keyword):
 
 # Function to generate Level 2 keywords
 def generate_level2_keywords(level1_keywords, progress_bar, status_text):
-    all_keywords = set()
+    all_keywords = {}
     with ThreadPoolExecutor(max_workers=500) as executor:
         futures = {executor.submit(get_autosuggest, query): query for query in level1_keywords}
         for i, future in enumerate(as_completed(futures), start=1):
@@ -99,7 +99,7 @@ def generate_level2_keywords(level1_keywords, progress_bar, status_text):
             try:
                 keywords = future.result()
                 if keywords:
-                    all_keywords.update(keywords)
+                    all_keywords[query] = keywords
                     # Log Level 2 keywords
                     with st.expander(f"Level 2 Keywords for '{query}'"):
                         st.write(keywords)
@@ -108,33 +108,42 @@ def generate_level2_keywords(level1_keywords, progress_bar, status_text):
                 status_text.text(f"Fetching Level 2 keywords: {i}/{len(level1_keywords)} completed")
             except Exception as e:
                 st.error(f"Error fetching Level 2 keywords for '{query}': {e}")
-    return list(all_keywords)
+    return all_keywords
 
-# Function to analyze keywords with Gemini (only keywords, no SERP data)
-def analyze_keywords_with_gemini(keywords, seed_keyword):
+# Function to analyze keywords with Gemini (structured input)
+def analyze_keywords_with_gemini(level1_keywords, level2_keywords_mapping):
     # System message with strict instructions
     system_message = """
-    You are a keyword analysis assistant. Your task is to analyze the intent of the provided keywords and group them into meaningful themes. Follow these rules strictly:
+    You are a keyword analysis assistant. Your task is to analyze the provided Level 1 keywords and their associated Level 2 keywords, then group them into broader, high-level themes. Follow these rules strictly:
 
-    1. Include keywords that are related or tangentially relevant to the seed keyword.
-    2. Limit each group to a maximum of 20 keywords. If a group exceeds 20 keywords, split it into smaller groups with similar themes.
-    3. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
-    4. Ensure all keywords are grouped into relevant themes. If necessary, create an "Other" group for slightly less relevant but still useful keywords.
-    5. Make sure that all keywords from the list are included in a meaningful group. Do not omit any keywords.
-    6. Create enough unique group themes to accommodate all keywords. If the list is large, create additional themes as needed.
+    1. Create broad, meaningful themes that can logically group the Level 1 keywords.
+    2. Each theme should include the Level 1 keyword(s) and their associated Level 2 keywords.
+    3. Ensure themes are distinct and avoid overlapping.
+    4. Do not include any explanations, notes, or additional text. Only provide the grouped keywords in the specified format.
+    5. If a Level 1 keyword fits into multiple themes, include it in the most relevant one.
 
     The final output should look EXACTLY like this:
 
     Theme Name
-    - keyword 1
-    - keyword 2
-    - keyword 3
+    - Level 1 Keyword 1
+      - Level 2 Keyword 1
+      - Level 2 Keyword 2
+    - Level 1 Keyword 2
+      - Level 2 Keyword 3
+      - Level 2 Keyword 4
     """
 
-    # Chat input (the keyword list)
+    # Prepare structured input for Gemini
+    structured_input = []
+    for level1_kw, level2_kws in level2_keywords_mapping.items():
+        structured_input.append(f"- {level1_kw}")
+        for level2_kw in level2_kws:
+            structured_input.append(f"  - {level2_kw}")
+
+    # Chat input (the structured keyword list)
     chat_input = f"""
-    Here is the list of keywords (one per line):
-    {"\n".join([f"- {kw}" for kw in keywords])}
+    Here is the structured list of Level 1 keywords and their associated Level 2 keywords:
+    {"\n".join(structured_input)}
     """
 
     # Log the full prompt sent to Gemini
@@ -143,7 +152,7 @@ def analyze_keywords_with_gemini(keywords, seed_keyword):
 
     # Configure Gemini generation settings
     generation_config = {
-        "temperature": 0,  # Higher temperature for more creative outputs
+        "temperature": 0,  # Lower temperature for more deterministic outputs
         "max_output_tokens": 8192,  # Set output token limit to 8192
         "top_p": 0.95,  # Set top_p to 0.95
     }
@@ -172,7 +181,7 @@ st.title("Google Autosuggest Keyword Fetcher with Gemini Analysis")
 
 # Initialize session state to store keywords
 if "all_keywords" not in st.session_state:
-    st.session_state.all_keywords = set()
+    st.session_state.all_keywords = {}
 if "gemini_output" not in st.session_state:
     st.session_state.gemini_output = None
 
@@ -196,7 +205,7 @@ if query:
     with st.spinner("Fetching initial autosuggest keywords..."):
         initial_keywords = get_autosuggest(query)
         if initial_keywords:
-            st.session_state.all_keywords.update(initial_keywords)
+            st.session_state.all_keywords[query] = initial_keywords
             # Log Level 1 keywords (initial autosuggestions)
             with st.expander("Level 1 Keywords (Initial Autosuggestions)"):
                 st.write(initial_keywords)
@@ -211,22 +220,22 @@ if query:
 
     # Step 3: Fetch Level 2 keywords
     with st.spinner("Fetching Level 2 keywords..."):
-        level2_keywords = generate_level2_keywords(expanded_keywords, progress_bar, status_text)
-        st.session_state.all_keywords.update(level2_keywords)
+        level2_keywords_mapping = generate_level2_keywords(expanded_keywords, progress_bar, status_text)
+        st.session_state.all_keywords.update(level2_keywords_mapping)
         progress_bar.progress(0.5)
         status_text.text("Fetching Level 2 keywords...")
 
     # Step 4: Analyze keywords with Gemini
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
-        st.write(f"Total keywords fetched: {len(st.session_state.all_keywords)}")
+        st.write(f"Total Level 1 keywords fetched: {len(st.session_state.all_keywords)}")
 
         with st.spinner("Analyzing keywords with Gemini..."):
-            st.session_state.gemini_output = analyze_keywords_with_gemini(st.session_state.all_keywords, query)
+            st.session_state.gemini_output = analyze_keywords_with_gemini(expanded_keywords, level2_keywords_mapping)
             progress_bar.progress(1.0)
             status_text.text("Analysis complete!")
 
-        # Display Gemini output as collapsible cards
+        # Display Gemini output as collapsible cards with hierarchy
         if st.session_state.gemini_output:
             st.subheader("Keyword Themes and Groups")
             
@@ -235,16 +244,18 @@ if query:
             
             for theme in themes:
                 if theme.strip():  # Ensure the theme is not empty
-                    # Split the theme into its name and keywords
                     theme_lines = theme.strip().split("\n")
                     theme_name = theme_lines[0]  # The first line is the theme name
-                    theme_keywords = "\n".join(theme_lines[1:])  # The rest are keywords
                     
                     # Display the theme as a collapsible card
                     with st.expander(theme_name):
-                        st.markdown(theme_keywords)
+                        for line in theme_lines[1:]:
+                            if line.startswith("- "):  # Level 1 keyword
+                                st.markdown(f"**{line[2:]}**")
+                            elif line.startswith("  - "):  # Level 2 keyword
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{line[4:]}")
     else:
         st.write("No keywords found.")
 else:
-    st.session_state.all_keywords = set()
+    st.session_state.all_keywords = {}
     st.session_state.gemini_output = None
