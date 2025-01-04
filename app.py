@@ -52,7 +52,8 @@ def generate_expanded_keywords(seed_keyword):
         "buy", "hire", "find", "near me",
         "best", "affordable", "top",
         "emergency", "24/7",
-        "near me", "local"
+        "near me", "local",
+        " "  # Add a space to fetch new autosuggestions
     ]
 
     # Alphabet modifiers (A-Z)
@@ -61,7 +62,8 @@ def generate_expanded_keywords(seed_keyword):
     # Generate modified seed keywords
     modified_seed_keywords = []
     for modifier in universal_modifiers:
-        modified_seed_keywords.append(f"{seed_keyword} {modifier}")
+        modified_seed_keywords.append(f"{seed_keyword}{modifier}")  # Append modifier directly
+        modified_seed_keywords.append(f"{modifier}{seed_keyword}")  # Prepend modifier
     for letter in alphabet_modifiers:
         modified_seed_keywords.append(f"{seed_keyword} {letter}")
 
