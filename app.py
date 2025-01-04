@@ -148,7 +148,7 @@ def analyze_keywords_with_openai(level1_keywords, level2_keywords_mapping):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4-turbo",  # Use "gpt-4o" if available
+            model="gpt-4o",  # Use "gpt-4o" if available
             messages=[
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": chat_input},
