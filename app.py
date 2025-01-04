@@ -2,10 +2,9 @@ import streamlit as st
 import requests
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import google.generativeai as genai
-from google.api_core import retry
 from difflib import SequenceMatcher
 import os
+from openai import OpenAI
 
 # Oxylabs proxy endpoint
 PROXY_USER = os.getenv("PROXY_USER", "customer-kasperpollas12345_Lyt6m-cc-us")
@@ -14,12 +13,9 @@ PROXY_HOST = os.getenv("PROXY_HOST", "pr.oxylabs.io")
 PROXY_PORT = os.getenv("PROXY_PORT", "7777")
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
-# Google Gemini API key
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAlxm5iSAsNVLbLvIVAAlxFkIBjkjE0E1Y")
-genai.configure(api_key=GEMINI_API_KEY)
-
-# Initialize Gemini model (Switched to Gemini 1.5 Pro)
-gemini_model = genai.GenerativeModel('gemini-1.5-pro')
+# OpenAI API key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "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")
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Function to fetch Google autosuggest keywords with retries (uses proxy)
 def get_autosuggest(query, max_retries=3):
@@ -110,8 +106,8 @@ def generate_level2_keywords(level1_keywords, progress_bar, status_text):
                 st.error(f"Error fetching Level 2 keywords for '{query}': {e}")
     return all_keywords
 
-# Function to analyze keywords with Gemini (structured input)
-def analyze_keywords_with_gemini(level1_keywords, level2_keywords_mapping):
+# Function to analyze keywords with OpenAI GPT-4 (structured input)
+def analyze_keywords_with_openai(level1_keywords, level2_keywords_mapping):
     # System message with strict instructions
     system_message = """
     You are a keyword analysis assistant. Your task is to analyze the provided Level 1 keywords and their associated Level 2 keywords, then group them into broader, high-level themes. Follow these rules strictly:
@@ -133,7 +129,7 @@ def analyze_keywords_with_gemini(level1_keywords, level2_keywords_mapping):
       - Level 2 Keyword 4
     """
 
-    # Prepare structured input for Gemini
+    # Prepare structured input for OpenAI
     structured_input = []
     for level1_kw, level2_kws in level2_keywords_mapping.items():
         structured_input.append(f"- {level1_kw}")
@@ -146,44 +142,36 @@ def analyze_keywords_with_gemini(level1_keywords, level2_keywords_mapping):
     {"\n".join(structured_input)}
     """
 
-    # Log the full prompt sent to Gemini
-    with st.expander("Full Prompt Sent to Gemini"):
+    # Log the full prompt sent to OpenAI
+    with st.expander("Full Prompt Sent to OpenAI"):
         st.write(system_message + "\n\n" + chat_input)
 
-    # Configure Gemini generation settings
-    generation_config = {
-        "temperature": 0,  # Lower temperature for more deterministic outputs
-        "max_output_tokens": 8192,  # Set output token limit to 8192
-        "top_p": 0.95,  # Set top_p to 0.95
-    }
-
-    # Retry logic for API calls with increased timeout
-    @retry.Retry()
-    def call_gemini():
-        return gemini_model.generate_content(
-            contents=[system_message, chat_input],  # Pass system message and chat input separately
-            generation_config=generation_config,
-            request_options={"timeout": 600},  # 10-minute timeout
-        )
-
     try:
-        response = call_gemini()
-        # Log the raw response from Gemini
-        with st.expander("Raw Response from Gemini"):
-            st.write(response.text)
-        return response.text
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",  # Use "gpt-4o" if available
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": chat_input},
+            ],
+            max_tokens=4096,
+            temperature=0,  # Lower temperature for deterministic outputs
+        )
+        # Log the raw response from OpenAI
+        with st.expander("Raw Response from OpenAI"):
+            st.write(response.choices[0].message.content)
+        return response.choices[0].message.content
     except Exception as e:
-        st.error(f"Error calling Gemini API: {e}")
+        st.error(f"Error calling OpenAI API: {e}")
         return None
 
 # Streamlit UI
-st.title("Google Autosuggest Keyword Fetcher with Gemini Analysis")
+st.title("Google Autosuggest Keyword Fetcher with OpenAI Analysis")
 
 # Initialize session state to store keywords
 if "all_keywords" not in st.session_state:
     st.session_state.all_keywords = {}
-if "gemini_output" not in st.session_state:
-    st.session_state.gemini_output = None
+if "openai_output" not in st.session_state:
+    st.session_state.openai_output = None
 
 # Sidebar for user input and settings
 with st.sidebar:
@@ -193,7 +181,7 @@ with st.sidebar:
     st.markdown("**Instructions:**")
     st.markdown("1. Enter a seed keyword (e.g., 'AI').")
     st.markdown("2. The app will fetch autosuggest keywords.")
-    st.markdown("3. Keywords will be analyzed and grouped by intent using Gemini.")
+    st.markdown("3. Keywords will be analyzed and grouped by intent using OpenAI GPT-4.")
 
 # Main content
 if query:
@@ -225,22 +213,22 @@ if query:
         progress_bar.progress(0.5)
         status_text.text("Fetching Level 2 keywords...")
 
-    # Step 4: Analyze keywords with Gemini
+    # Step 4: Analyze keywords with OpenAI GPT-4
     if st.session_state.all_keywords:
         st.success("Keyword fetching completed!")
         st.write(f"Total Level 1 keywords fetched: {len(st.session_state.all_keywords)}")
 
-        with st.spinner("Analyzing keywords with Gemini..."):
-            st.session_state.gemini_output = analyze_keywords_with_gemini(expanded_keywords, level2_keywords_mapping)
+        with st.spinner("Analyzing keywords with OpenAI GPT-4..."):
+            st.session_state.openai_output = analyze_keywords_with_openai(expanded_keywords, level2_keywords_mapping)
             progress_bar.progress(1.0)
             status_text.text("Analysis complete!")
 
-        # Display Gemini output as collapsible cards with hierarchy
-        if st.session_state.gemini_output:
+        # Display OpenAI output as collapsible cards with hierarchy
+        if st.session_state.openai_output:
             st.subheader("Keyword Themes and Groups")
             
-            # Split the Gemini output into individual themes
-            themes = st.session_state.gemini_output.strip().split("\n\n")
+            # Split the OpenAI output into individual themes
+            themes = st.session_state.openai_output.strip().split("\n\n")
             
             for theme in themes:
                 if theme.strip():  # Ensure the theme is not empty
@@ -258,4 +246,4 @@ if query:
         st.write("No keywords found.")
 else:
     st.session_state.all_keywords = {}
-    st.session_state.gemini_output = None
+    st.session_state.openai_output = None
