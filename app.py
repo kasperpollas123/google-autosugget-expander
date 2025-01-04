@@ -53,7 +53,7 @@ def generate_expanded_keywords(seed_keyword):
         "best", "affordable", "top",
         "emergency", "24/7",
         "near me", "local",
-        " "  # Add a space to fetch new autosuggestions
+        "("  # Add a left parenthesis to fetch new autosuggestions
     ]
 
     # Alphabet modifiers (A-Z)
