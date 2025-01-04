@@ -14,7 +14,7 @@ PROXY_PORT = os.getenv("PROXY_PORT", "7777")
 PROXY_URL = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 # OpenAI API key
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "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")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-svcacct-AmMaPplrcuwyMUy7uuIyS3PnAxgHAYtlUe_6Ox4Cu_M5U9RSKaZvklTwkehkkbUT3BlbkFJUZjZz7Ay7VLN42-C8PPMKf8LIdGMNVNnjT3qSPqwSSsuKcvya_hzlAInRqjQAYwA")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Function to fetch Google autosuggest keywords with retries (uses proxy)
